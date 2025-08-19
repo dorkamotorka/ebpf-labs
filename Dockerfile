@@ -44,7 +44,7 @@ RUN sudo apt-get install -y libbpf-dev && \
 
 # bpftool from source (with libbfd symlink)
 RUN sudo ln -sf /usr/lib/$(uname -m)-linux-gnu/libbfd.so /usr/lib/libbfd.so && \
-    git clone --recurse-submodules https://github.com/libbpf/bpftool.git && \
+    sudo git clone --recurse-submodules https://github.com/libbpf/bpftool.git && \
     cd bpftool && \
     git submodule update --init && \
     cd src && \
