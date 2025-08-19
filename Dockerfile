@@ -55,12 +55,12 @@ RUN sudo add-apt-repository -y ppa:longsleep/golang-backports && \
     sudo apt-get update -y && \
     sudo apt-get install -y --no-install-recommends golang-go
     
-RUN rm -rf /var/lib/apt/lists/*
+RUN sudo rm -rf /var/lib/apt/lists/*
 
 # Show versions for quick sanity check (optional)
-RUN set -x && \
-    which bpftool && bpftool version || true && \
-    go version && \
-    clang --version | head -n1 && \
-    llvm-as --version | head -n1 && \
-    ld --version | head -n1
+#RUN set -x && \
+#    which bpftool && bpftool version || true && \
+#    go version && \
+#    clang --version | head -n1 && \
+#    llvm-as --version | head -n1 && \
+#    ld --version | head -n1
