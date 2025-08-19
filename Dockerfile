@@ -48,7 +48,7 @@ RUN sudo ln -sf /usr/lib/$(uname -m)-linux-gnu/libbfd.so /usr/lib/libbfd.so && \
     cd bpftool && \
     git submodule update --init && \
     cd src && \
-    make install
+    sudo make install
 
 # Golang from longsleep PPA
 RUN sudo add-apt-repository -y ppa:longsleep/golang-backports && \
