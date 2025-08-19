@@ -34,7 +34,7 @@ RUN sudo apt-get install -y --no-install-recommends ubuntu-dbgsym-keyring && \
 deb http://ddebs.ubuntu.com %s-updates main restricted universe multiverse\n\
 deb http://ddebs.ubuntu.com %s-proposed main restricted universe multiverse\n" \
       "$UB_CODENAME" "$UB_CODENAME" "$UB_CODENAME" \
-      | tee /etc/apt/sources.list.d/ddebs.list >/dev/null && \
+      | sudo tee /etc/apt/sources.list.d/ddebs.list >/dev/null && \
     sudo apt-get update -y && \
     sudo apt-get install -y --no-install-recommends bpftrace-dbgsym 
 
