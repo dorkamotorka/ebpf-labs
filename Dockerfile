@@ -64,3 +64,5 @@ RUN set -x && \
     clang --version | head -n1 && \
     llvm-as --version | head -n1 && \
     ld --version | head -n1
+
+CMD ["/bin/bash"]
