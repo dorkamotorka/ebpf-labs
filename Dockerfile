@@ -1,9 +1,9 @@
 FROM ghcr.io/iximiuz/labs/rootfs:ubuntu-24-04
 
-RUN apt-get update -y
+RUN sudo apt-get update -y
 
 # Base packages & eBPF dependencies
-RUN apt-get install -y --no-install-recommends \
+RUN sudo apt-get install -y --no-install-recommends \
         apt-transport-https \
         ca-certificates \
         curl \
@@ -25,21 +25,21 @@ RUN apt-get install -y --no-install-recommends \
         python3-pip \
         linux-tools-common && \
     # Try to install tools for the running kernel; ignore if not present in repos
-    (apt-get install -y "linux-tools-$(uname -r)" || true)
+    (sudo apt-get install -y "linux-tools-$(uname -r)" || true)
 
 # Enable Ubuntu debug symbol repos and install bpftrace dbgsym
-RUN apt-get install -y --no-install-recommends ubuntu-dbgsym-keyring && \
+RUN sudo apt-get install -y --no-install-recommends ubuntu-dbgsym-keyring && \
     UB_CODENAME="$(. /etc/os-release && echo "${UBUNTU_CODENAME}")" && \
     printf "deb http://ddebs.ubuntu.com %s main restricted universe multiverse\n\
 deb http://ddebs.ubuntu.com %s-updates main restricted universe multiverse\n\
 deb http://ddebs.ubuntu.com %s-proposed main restricted universe multiverse\n" \
       "$UB_CODENAME" "$UB_CODENAME" "$UB_CODENAME" \
       | tee /etc/apt/sources.list.d/ddebs.list >/dev/null && \
-    apt-get update -y && \
-    apt-get install -y --no-install-recommends bpftrace-dbgsym 
+    sudo apt-get update -y && \
+    sudo apt-get install -y --no-install-recommends bpftrace-dbgsym 
 
 # libbpf-dev and asm include symlink
-RUN apt-get install -y libbpf-dev && \
+RUN sudo apt-get install -y libbpf-dev && \
     ln -sf /usr/include/$(uname -m)-linux-gnu/asm /usr/include/asm
 
 # bpftool from source (with libbfd symlink)
@@ -51,9 +51,9 @@ RUN ln -sf /usr/lib/$(uname -m)-linux-gnu/libbfd.so /usr/lib/libbfd.so && \
     make install
 
 # Golang from longsleep PPA
-RUN add-apt-repository -y ppa:longsleep/golang-backports && \
-    apt-get update -y && \
-    apt-get install -y --no-install-recommends golang-go
+RUN sudo add-apt-repository -y ppa:longsleep/golang-backports && \
+    sudo apt-get update -y && \
+    sudo apt-get install -y --no-install-recommends golang-go
     
 RUN rm -rf /var/lib/apt/lists/*
 
