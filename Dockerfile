@@ -40,10 +40,10 @@ deb http://ddebs.ubuntu.com %s-proposed main restricted universe multiverse\n" \
 
 # libbpf-dev and asm include symlink
 RUN sudo apt-get install -y libbpf-dev && \
-    ln -sf /usr/include/$(uname -m)-linux-gnu/asm /usr/include/asm
+    sudo ln -sf /usr/include/$(uname -m)-linux-gnu/asm /usr/include/asm
 
 # bpftool from source (with libbfd symlink)
-RUN ln -sf /usr/lib/$(uname -m)-linux-gnu/libbfd.so /usr/lib/libbfd.so && \
+RUN sudo ln -sf /usr/lib/$(uname -m)-linux-gnu/libbfd.so /usr/lib/libbfd.so && \
     git clone --recurse-submodules https://github.com/libbpf/bpftool.git && \
     cd bpftool && \
     git submodule update --init && \
