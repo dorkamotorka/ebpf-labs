@@ -58,4 +58,4 @@ RUN sudo add-apt-repository -y ppa:longsleep/golang-backports && \
 RUN sudo rm -rf /var/lib/apt/lists/*
 
 # Clone the hello world examples
-RUN sudo git clone https://github.com/dorkamotorka/ebpf-stack.git /home
+RUN sudo git clone https://github.com/dorkamotorka/ebpf-stack.git /home/ebpf-hello-world
