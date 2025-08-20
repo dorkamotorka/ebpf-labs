@@ -44,7 +44,7 @@ jobs:
       - name: Build and Push
         uses: docker/build-push-action@v6
         with:
-          context: ./images/hello-world/
+          file: ./images/Dockerfile.helloworld
           platforms: linux/amd64
           push: true
           tags: |
