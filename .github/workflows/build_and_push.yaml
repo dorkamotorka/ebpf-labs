@@ -11,7 +11,8 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  BASE_IMAGE_NAME: ${{ github.repository }}
+  HELLO_WORLD_IMAGE_NAME: ${{ github.repository }}-hello-world
 
 jobs:
   docker:
@@ -35,5 +36,19 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:latest
+          cache-to: type=inline
+
+      - name: Build and Push
+        uses: docker/build-push-action@v6
+        with:
+          context: images/Dockerfile.helloworld
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.HELLO_WORLD_IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.HELLO_WORLD_IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.HELLO_WORLD_IMAGE_NAME }}:latest
+          cache-to: type=inline
