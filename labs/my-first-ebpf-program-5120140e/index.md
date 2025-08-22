@@ -12,6 +12,7 @@ playground:
 tasks:
   clone_hello_world:
     init: true
+    user: laborant
     run: |
       git clone https://github.com/dorkamotorka/ebpf-hello-world.git /home/laborant/ebpf-hello-world
 
@@ -29,7 +30,7 @@ cover: __static__/cover.png
 
 ---
 
-When you start the tutorial, you’ll see a `Term 1` terminal and an `IDE` on the right-hand side. You are logged in as `root`, and the current working directory (`/`) already contains the `ebpf-hello-world` folder. Inside it, you’ll find [eBPF Hello World example](https://github.com/dorkamotorka/ebpf-hello-world) implemented using eBPF/Golang framework from Cilium called [ebpf-go](https://ebpf-go.dev/). 
+When you start the tutorial, you’ll see a `Term 1` terminal and an `IDE` on the right-hand side. You are logged in as `root`, and the current working directory (`/`) already contains the `ebpf-hello-world` folder. Inside, you’ll find the [eBPF Hello World example](https://github.com/dorkamotorka/ebpf-hello-world), implemented with [ebpf-go](https://ebpf-go.dev/) — a Golang eBPF framework developed as part of the Cilium project.
 
 And there are several good reasons for this choice:
 
@@ -43,9 +44,9 @@ And there are several good reasons for this choice:
 
 - **Community and documentation** – The project has active contributors, solid documentation, and plenty of real-world examples, which makes the learning curve much smoother.
 
-If this still hasn’t convinced you, take a look at one of our [blog post](https://ebpfchirp.substack.com/p/go-c-rust-and-more-picking-the-right) where we compare different frameworks along with their pros and cons.
+If this still hasn’t convinced you, check out our [blog post](https://ebpfchirp.substack.com/p/go-c-rust-and-more-picking-the-right) where we compare different frameworks and break down their pros and cons.
 
-## Explaining the eBPF Code Flow
+## eBPF Code Flow
 
 If you open the `ebpf-hello-world` folder—using either the `Term 1` terminal or the `IDE`—you’ll find a minimal (arguably the smallest) eBPF application we could put together.
 
@@ -56,28 +57,42 @@ Every eBPF application typically has two parts:
 
 We have intentionally added code comments to (almost) every code line, just for the sake of this tutorial. Start by looking into `hello.c` and follow along with the `main.go`.
 
-::remark-box
+TODO: add an image of the flow
+
+::details-box
 ---
-kind: info
+:summary: What about vmlinux.h file?
 ---
-💡 For this simple example, these two programs aren't anyhow communicating with each other, since they would need a buffer to exchange data. We'll get there in another tutorial, but in case you are interested - this would be implemented via [different kind of BPF maps](https://docs.kernel.org/bpf/maps.html).
+
+At a high level, your eBPF program needs access to kernel context and data structures to do anything meaningful. For example, we might extend this tutorials' code and read the arguments passed to the `execve` system call. These arguments are available through the `trace_event_raw_sys_enter` struct — and that struct is defined in `vmlinux.h`.
 ::
 
-## Building and Running the eBPF Application
+## Generating and Building the eBPF Application
 
 Let's build the application, using:
 
 ```bash
-cd ebpf-hello-world # Go inside the project if you haven't already
+cd ebpf-hello-world # Go inside the project folder if you haven't already
 go generate
 go build
 ```
 
-Well, this is interesting - what's the difference between `go build` and `go generate`?
+Well, this is interesting - what's the difference between `go build` and `go generate` or even what are they at all?
 
-While `go build` is a pretty standard command that compiles your Go code into a binary (an executable), `go generate` is a bit more tricky in this case where we have to run it beforehand.
+While `go build` is a pretty standard command that compiles your Go code into a binary (an executable), `go generate` is a bit less common.
 
-By definition, `go generate` runs code generation commands that you define in special `//go:generate` comments inside your source files. And if you look inside the `main.go` file, you'll find one at the top.
+By definition, `go generate` runs (code generation) commands that you define in special `//go:generate` comments inside your source files. And if you look inside the `main.go` file, you'll find one at the top.
+
+```go [main.go]{3}
+package main
+
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target bpf hello hello.c
+
+import (
+	"log"
+	"os"
+...
+```
 
 Namely, the `go generate` command will invoke a handy tool called [bpf2go](https://github.com/cilium/ebpf/tree/main/cmd/bpf2go) with some arguments passed to it. But what's really interesting, if you look inside the code of this tool is that it is nothing more that just a wrapper around `clang` - compiler for C, C++, and related languages, built as part of the LLVM project, which happens to also be used for compiling eBPF kernel code.
 
@@ -87,44 +102,64 @@ In other words, `go generate` compiles the eBPF kernel program (`hello.c`) into 
 
 Lastly, `go build` picks up the `main.go` and `hello_bpf.go` and builds the final eBPF application binary `hello`.
 
-::remark-box
+::details-box
 ---
-kind: info
+:summary: What about `//go:build ignore` at the top of hello.c file?
 ---
 
-💡 We also need to set `//go:build ignore`, since Go files and C files are in the same folder, the Go toolchain tries to treat everything in that folder as part of the build. But files like `hello.c` are not Go files, and by default `go build` will complain if it encounters them.
+Since Go files and C files are in the same folder, the Go toolchain tries to treat everything in that folder as part of the build. But files like `hello.c` are not Go files, and by default `go build` will complain if it encounters them.
 ::
 
-Now, to actually run the compiled `hello` binary, the `CAP_BPF` [Linux capability](https://man7.org/linux/man-pages/man7/capabilities.7.html) is required. 
+## Running the eBPF Application
 
-That's mandatory because our logic uses privileged BPF operations (e.g. loading the eBPF code into the kernel) and at the same time many Linux distributions anyway don't allow unprivileged eBPF. 
+Now, to actually run the compiled `hello` binary and eBPF applications in general, the `CAP_BPF` [Linux capability](https://man7.org/linux/man-pages/man7/capabilities.7.html) is required. 
+
+That's mandatory because the logic almost always uses privileged BPF operations like loading the eBPF code into the kernel (, creating eBPF maps, loading BTF information, iterating over programs and maps, etc.).
 
 ::remark-box
 ---
 kind: info
 ---
 
-💡 `CAP_BPF` is available since Linux kernel 5.8 and was introduced to separate out BPF functionality from the overloaded `CAP_SYS_ADMIN` capability. It allows loading all types of BPF programs, create most map types, load BTF, iterate programs and maps. 
+💡 `CAP_BPF` is available since Linux kernel 5.8 and was introduced to separate out BPF functionality from the overloaded `CAP_SYS_ADMIN` capability.
 ::
 
 However, since in this demo environment and you can log in as the `root`, this is not a problem. 
 
-Run `hello`:
+We can just run `hello`, using:
 
 ```bash
 sudo ./hello
 ```
 
-TODO: it logs to kernel logs
+`hello` eBPF application should now capture and log `Hello world` each time a process is executed on the system. 
 
-`hello` will now show output each time any process is executed. But since there is little going on in a small VM like ours, we will generate some events. On the left side on the top, switch to the second `Term 2` tab, and execute:
+Well, not really. In order for this tutorial to remain as simple as possible, our two programs aren't anyhow communicating with each other, since they would need a buffer to exchange data. We'll get there in another tutorial, but in case you are interested - this would be implemented via [different kind of BPF maps](https://docs.kernel.org/bpf/maps.html).
+
+For now, everytime the process is executed on the system, our eBPF application does in fact capture this and runs itself, but this is only indicated through the eBPF logs, to which we are writing `Hello world` using `bpf_printk("Hello world");` line.
+
+```c [hello.c]{4}
+...
+SEC("tracepoint/syscalls/sys_enter_execve")
+int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
+    bpf_printk("Hello world");
+    return 0;
+}
+```
+
+On the right side at the top, open the second `Term 2` tab by clicking (`+`), and view the logs using:
+```bash
+sudo cat /sys/kernel/debug/tracing/trace_pipe
+```
+
+It's unlikely, but possible you won't see any `Hello world` logs. This could be, since there is little going on in a small VM like ours, so let's execute some process ourself.
+
+Open the third `Term 3` tab, and execute:
 
 ```bash
 cat /etc/os-release
+# or
+uname -a
 ```
 
-Switch back to the first `Term 1` tab and see the output: a process execution of `cat` command has been captured and logged.
-
-If you leave execsnoop running, from time to time you might see output generated by other processes running on the VM.
-
-TODO: make it a helloworld for different programming languages
+Switch back to the second `Term 2` tab and see the output.
