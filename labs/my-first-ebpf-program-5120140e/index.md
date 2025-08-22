@@ -24,7 +24,7 @@ tagz:
 - ebpf
 
 createdAt: 2025-08-20
-updatedAt: 2025-08-20
+updatedAt: 2025-08-22
 
 cover: __static__/new.png
 
@@ -162,7 +162,7 @@ int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
 
 Now, to actually run the compiled `hello` binary and eBPF applications in general, the `CAP_BPF` [Linux capability](https://man7.org/linux/man-pages/man7/capabilities.7.html) is required. 
 
-That's mandatory because the logic almost always uses privileged BPF operations like loading the eBPF code into the kernel (, creating eBPF maps, loading BTF information, iterating over programs and maps, etc.).
+That's mandatory because the logic almost always uses privileged BPF operations like loading the eBPF code into the kernel, creating eBPF maps, loading BTF information, iterating over programs and maps, etc.
 
 ::remark-box
 ---
@@ -172,9 +172,9 @@ kind: info
 💡 `CAP_BPF` is available since Linux kernel 5.8 and was introduced to separate out BPF functionality from the overloaded `CAP_SYS_ADMIN` capability.
 ::
 
-However, since in this demo environment and you can log in as `root`, this is not a problem. 
+However, since in this demo environment and you can log in as `root`, this is not a problem - you've got all the permissions. 
 
-We can just run `hello`, using:
+So we can just run our eBPF application, using:
 
 ```bash
 sudo ./hello
@@ -182,9 +182,11 @@ sudo ./hello
 
 The `hello` eBPF application should now capture and log `Hello world` each time a process is executed on the system.  
 
-Well, not exactly. To keep this tutorial as simple as possible, our user and kernel programs aren’t communicating with each other yet — they would need a buffer to exchange data. We’ll cover that in a future tutorial. If you’re curious, this is typically implemented using [different types of BPF maps](https://docs.kernel.org/bpf/maps.html).  
+Well, not exactly...
 
-For now, every time a process runs on the system, our eBPF program does capture the event and executes, but the only visible output is in the eBPF logs, where we write `Hello world` with the line:  
+To keep this tutorial as simple as possible, our user and kernel programs aren’t communicating with each other yet — they would need a buffer to exchange data. We’ll cover that in a future tutorial. But if you’re curious, this is typically implemented using [different types of BPF maps](https://docs.kernel.org/bpf/maps.html).  
+
+For now, every time a process runs on the system, our eBPF program does capture the event and executes, but just logs the `Hello world` to the eBPF logs. This done by the following line:  
 
 ```c [hello.c]{4}
 ...
@@ -200,7 +202,7 @@ To view these logs, on the right side at the top, open the second `Term 2` tab b
 sudo cat /sys/kernel/debug/tracing/trace_pipe
 ```
 
-It's unlikely, but possible you won't see any `Hello world` logs. This could be, since there is little going on in a small VM like ours, so let's execute some process ourself.
+It's quite unlikely you won't see any `Hello world` logs. But this could be the case, since there is little going on in a small VM like ours, so let's execute some process ourself.
 
 Open the third `Term 3` tab, and execute:
 
