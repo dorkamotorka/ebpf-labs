@@ -30,7 +30,7 @@ cover: __static__/new.png
 
 ---
 
-When you start the tutorial, you’ll see a `Term 1` terminal and an `IDE` on the right-hand side. You are logged in as `laborant`, and the current working directory (`/`) already contains the `ebpf-hello-world` folder. Inside, you’ll find the [eBPF Hello World example](https://github.com/dorkamotorka/ebpf-hello-world), implemented with [ebpf-go](https://ebpf-go.dev/) — a Golang eBPF framework developed as part of the [Cilium](https://cilium.io/) project.
+When you start the tutorial, you’ll see a `Term 1` terminal and an `IDE` on the right-hand side. You are logged in as `laborant`, and the current working directory (`/`) already contains the `ebpf-hello-world` folder. Inside, you’ll find the [eBPF Hello World labs](https://github.com/dorkamotorka/ebpf-hello-world), implemented with [ebpf-go](https://ebpf-go.dev/) — a Golang eBPF framework developed as part of the [Cilium](https://cilium.io/) project.
 
 And there are several good reasons for this choice:
 
@@ -48,7 +48,7 @@ If this still hasn’t convinced you, check out our [blog post](https://ebpfchir
 
 ## The Two Sides of an eBPF Application
 
-If you open the `ebpf-hello-world` folder—using either the `Term 1` terminal or the `IDE`—you’ll find a minimal (arguably the smallest) eBPF application we could put together.
+If you open the `ebpf-hello-world/lab1` folder—using either the `Term 1` terminal or the `IDE`—you’ll find a minimal (arguably the smallest) eBPF application we could put together.
 
 Every eBPF application typically has two parts:
 
@@ -82,7 +82,7 @@ bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h
 Let's build the eBPF application, using:
 
 ```bash
-cd ebpf-hello-world # Go inside the project folder if you haven't already
+cd ebpf-hello-world/lab1 # Go inside the ebpf-hello-world/lab1 folder if you haven't already
 go generate
 go build
 ```
@@ -136,7 +136,7 @@ We’ll see such an example in a future tutorial for sure.
 
 In more simple terms, `go generate` compiles the eBPF kernel program (`hello.c`) into an object file (`hello_bpf.o`) and generates a Go source file (`hello_bpf.go`) that embeds the object and provides helper functions to work with it.
 
-Lastly, `go build` picks up the `main.go` and `hello_bpf.go` and builds the final eBPF application binary `hello`.
+Lastly, `go build` picks up the `main.go` and `hello_bpf.go` and builds the final eBPF application binary `lab1`.
 
 ::details-box
 ---
@@ -160,7 +160,7 @@ int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
 
 ## Running the eBPF Application
 
-Now, to actually run the compiled `hello` binary and eBPF applications in general, the `CAP_BPF` [Linux capability](https://man7.org/linux/man-pages/man7/capabilities.7.html) is required. 
+Now, to actually run the compiled `lab1` binary and eBPF applications in general, the `CAP_BPF` [Linux capability](https://man7.org/linux/man-pages/man7/capabilities.7.html) is required. 
 
 That's mandatory because the logic almost always uses privileged BPF operations like loading the eBPF code into the kernel, creating eBPF maps, loading BTF information, iterating over programs and maps, etc.
 
@@ -177,10 +177,10 @@ However, since in this demo environment and you can log in as `root`, this is no
 So we can just run our eBPF application, using:
 
 ```bash
-sudo ./hello
+sudo ./lab1
 ```
 
-The `hello` eBPF application should now capture and log `Hello world` each time a process is executed on the system.  
+The `lab1` eBPF application should now capture and log `Hello world` each time a process is executed on the system.  
 
 Well, not exactly...
 
