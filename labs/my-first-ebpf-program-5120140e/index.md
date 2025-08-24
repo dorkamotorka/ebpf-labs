@@ -26,7 +26,7 @@ tagz:
 createdAt: 2025-08-20
 updatedAt: 2025-08-22
 
-cover: __static__/new.png
+cover: __static__/new-cover.png
 
 ---
 
@@ -57,7 +57,7 @@ Every eBPF application typically has two parts:
 
 ::image-box
 ---
-:src: __static__/new.png
+:src: __static__/new-cover.png
 :alt: 'The Two Sides of an eBPF Application'
 ---
 ::
