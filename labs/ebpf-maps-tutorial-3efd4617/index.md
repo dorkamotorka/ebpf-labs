@@ -30,9 +30,9 @@ cover: __static__/ebpf-map2.png
 
 ---
 
-When you start the tutorial, you’ll see a `Term 1` terminal and an `IDE` on the right-hand side. You are logged in as `laborant`, and the current working directory (`/`) already contains the `ebpf-hello-world` folder. Inside, you’ll find the [eBPF Hello World labs](https://github.com/dorkamotorka/ebpf-hello-world), implemented with [ebpf-go](https://ebpf-go.dev/) — a Golang eBPF framework developed as part of the [Cilium](https://cilium.io/) project.
+When you start the tutorial, you’ll see a `Term 1` terminal and an `IDE` on the right-hand side. You are logged in as `laborant`, and the current working directory already contains the `ebpf-hello-world` folder. Inside, you’ll find the [eBPF Hello World labs](https://github.com/dorkamotorka/ebpf-hello-world), implemented with [ebpf-go](https://ebpf-go.dev/) — a Golang eBPF framework developed as part of the [Cilium](https://cilium.io/) project.
 
-This tutorial serves as the continuation of [From Zero to Your First eBPF Program](https://labs.iximiuz.com/tutorials/my-first-ebpf-program-5120140e), expanding on the concepts introduced earlier.
+This tutorial serves as the continuation of [From Zero to Your First eBPF Program](https://labs.iximiuz.com/tutorials/my-first-ebpf-program-5120140e), expanding on the introduced concepts.
 
 In this part, you’ll learn about eBPF Maps, which allow data to be persisted or shared between eBPF programs and user space services. To keep things straightforward, we’ll skip sending events to user space for now. Instead, we’ll focus on how to persist a state inside an eBPF program. Through a simple example, you’ll learn to use an eBPF map to store a counter that tracks how many times specific binary executables are triggered.
 
@@ -40,17 +40,17 @@ In this part, you’ll learn about eBPF Maps, which allow data to be persisted o
 
 When you want to store a state in eBPF kernel program, there are several eBPF Map types you can choose from. Just to name a few:
 
-- **Hash Map**: stores key/value pairs and allows fast lookups
-- **Array Map**: similar to hash map, but key is always 32-bit unsigned integer
-- **Per-CPU Hash/Array**: similar to hash and array maps, but each CPU gets its own copy of the map
-- **LRU Hash Map**: a hash map with Least Recently Used eviction policy, automatically removing old entries after being full
-- **Ring Buffer**: used for passing kernel events data from kernel space to user space
+- **Hash Map**: A generic key/value store where both keys and values can be of arbitrary types
+- **Array Map**: Similar to hash map, but key is always 32-bit unsigned integer
+- **Per-CPU Hash/Array Map**: Same as hash (and array) map, but each CPU gets its own copy of it
+- **LRU Hash Map**: A hash map with Least Recently Used eviction policy, automatically removing old entries after being full
+- **Ring Buffer**: Used for passing kernel events data from kernel space to user space
 
 Which map type to use depends heavily on your specific use case. We’ll cover the design choices in another tutorial, but for our example, we’ll just use a **Hash Map**.
 
-Before we can use an eBPF map in our kernel program, we need to define it. Navigate to the `lab2` folder with either using the `Term 1` terminal or the `IDE`. Then, open the `hello.c` file.
+Before we can use an eBPF map in our kernel program, we need to define it. Navigate to the `ebpf-hello-world/lab2` folder with either using the `Term 1` terminal or the `IDE`. Then, open the `hello.c` file.
 
-Inside, add the following code lines and eBPF map definition:
+Inside, add the following code lines and eBPF map definition (under Step 1):
 
 ```c
 #define MAX_PATH 256
@@ -67,24 +67,38 @@ struct {
 } exec_count SEC(".maps");
 ```
 
-As you can see, our eBPF map is defined in the kernel program and stores key/value pairs: 
+As you can see in the code, our eBPF map stores key/value pairs, where: 
 - The **key** is a `struct path_key`, which contains the binary execution path (e.g., `/usr/bin/ls`, `/usr/bin/cat`)
-- The **value** is a `__u64` integer that counts how many times that binary has been executed
+- The **value** is a `__u64` integer that counts how many times that binary has been executed (e.g., `1`, `2`, `3`, ...)
 
 ::details-box
 ---
 :summary: What about `max_entries` parameter?
 ---
 
-The `max_entries` field defines the maximum number of key/value pairs that this map can hold at any given time.
+The `max_entries` field defines the upper bound on how many key/value pairs a map can hold.
 
-We set it's value to `16384`, but in general the value you choose can range from a handful (e.g., 1, 128, 1024) up to hundreds of thousands or even millions, depending on kernel configuration (ulimit, locked memory, and available RAM). 
+In this example, we set it to `16384` but in practice, the value can range from just a few (e.g., `1`, `128`, `1024`) up to hundreds of thousands or even millions, depending on kernel configuration (`ulimit`, locked memory) and available RAM.
 
-Each entry consumes kernel memory, so setting this number too high can lead to allocation failures or wasted resources.
+To avoid hitting the memory lock limit (`RLIMIT_MEMLOCK`), we include the following code in the user space program:
+
+```go [main.go]{6-8}
+...
+func main() {
+	// By default (for Linux < 5.11), Linux sets a RLIMIT_MEMLOCK (memory lock limit) that restricts how much memory a process can lock into RAM. 
+	// eBPF maps and programs use pinned memory that counts against this limit. 
+	// If you don’t raise or remove the limit, loading larger eBPF programs or maps will fail with errors like “operation not permitted” or “memory locked limit exceeded.”
+	if err := rlimit.RemoveMemlock(); err != nil {
+		log.Fatal("Removing memlock:", err)
+	}
+...
+```
+
+**NOTE:** Starting with Linux v5.11, the [memory accounting and limiting was moved from rlimit to cGroups](https://docs.ebpf.io/linux/concepts/resource-limit/). In other words, if the resource limits need to be raised, it should be done so with the `memory.max` setting on the cGroup.
 
 ::
 
-Technically, this eBPF map could now be updated (store/read/delete key/value pairs) from any eBPF kernel or user space program, but in our case we just update it from our eBPF kernel function. And we do so by modifying our kernel program as such:
+Technically, this eBPF map could now be updated (store/read/delete key/value pairs) from any eBPF kernel or user space program, but in our case we just update it from our eBPF kernel function. And we do so by modifying our kernel program as such (under Step 2):
 
 ```c
 SEC("tracepoint/syscalls/sys_enter_execve")
@@ -142,7 +156,7 @@ It might feel like a lot to take in at first, so we’ve added detailed comments
 The interesting lines of code, related to the eBPF map are:
 
 - `bpf_map_lookup_elem(map, key)` - Looks up an element in the map by key and returns a pointer to the value in kernel space if it exists, or NULL if not found.
-- `bpf_map_update_elem(map, key, value, flags)` - Inserts or updates a map entry. The flags parameter controls the update behavior:
+- `bpf_map_update_elem(map, key, value, flags)` - Inserts or updates a map entry. The `flags` parameter controls the update behavior:
   - `BPF_ANY`: create new or update existing
   - `BPF_NOEXIST`: create only if key doesn’t exist
   - `BPF_EXIST`: update only if key exists
@@ -160,7 +174,7 @@ Some other eBPF map helper functions that you’ll encounter in the wild:
 - `bpf_map_peek_elem(map, value_out)` for retrieving the top element from a Queue, Stack and Bloom filter eBPF Maps without removing it.
 - and others..
 
-General advice is to check the [official eBPF documentation](https://docs.ebpf.io/linux/map-type/) for each map type to see which helper functions are supported.
+⚠️ Not all helpers are supported by every map type. For details, check the [official eBPF documentation](https://docs.ebpf.io/linux/map-type/) to see which helpers are available for each map type.
 
 ::
 
@@ -175,7 +189,7 @@ go build
 sudo ./lab2
 ```
 
-Since our eBPF program includes a call to `bpf_printk()`, we should see log messages whenever a certain binary is executed.
+If you looked closely at the code, you’ll must have seen that our eBPF program calls `bpf_printk()`. This means we should get a log message each time a certain binary is executed.
 
 To view these logs, open the **Term 2** tab on the right (click the `+` at the top), and run:
 
@@ -195,13 +209,13 @@ uname -a
 
 ## Inspecting the eBPF Map
 
-But we already did that in the first tutorial and it doesn't really tell us a lot about how many times certain binaries were executed.
+But we already learned how to view the logs in the first tutorial and it doesn't really tell us a lot about how many times certain binaries were executed.
 
-A more useful approach is to inspect the contents of our eBPF map directly. That way, we would see each key (the binary name) along with its value (the number of times it was executed).  
+A more useful approach would be to inspect the contents of our eBPF map directly. That way, we would see each key (the binary name) along with its value (the number of times it was executed).  
 
 This is achieved using [bpftool](https://github.com/libbpf/bpftool).
 
-As this in a eBPF playground, this tool is already install and you can list all the eBPF maps loaded on the system using:
+As this in a eBPF playground, this tool is already install. Open (or go back to `Term 3` terminal) and list all the eBPF maps loaded on the system using:
 
 ```bash
 sudo bpftool map list
@@ -229,30 +243,31 @@ sudo bpftool map dump id 303 # Update the ID according to your output
 :summary: Output of `bpftool map list` explained in detail
 ---
 
-For our `exec_count` eBPF map that we loaded using our application, it includes the following parameters:
+Our `exec_count` eBPF map that we loaded using our application includes the following parameters:
 
-- `303` → the map ID assigned by the kernel. You can use this ID to reference the map (e.g., with `bpftool map dump id 303`).
-- `hash` → the map type. In this case, it’s a hash map (`BPF_MAP_TYPE_HASH`).
-- `name exec_count` → the map’s name, set when it was defined in the eBPF program (e.g., `SEC("maps") struct { ... } exec_count`).
-- `flags 0x0` → creation flags for the map. `0x0` means no special flags were used. Common ones are `BPF_F_NO_PREALLOC`, `BPF_F_RDONLY_PROG`, etc.
-- `key 256B` → the key size. Each key in this map is 256 bytes long.
-- `value 8B` → the value size. Each value stored is 8 bytes (a counter such as `__u64` integer representing the execution count).
-- `max_entries 16384` → the maximum number of key-value pairs the map can hold. 
-- `memlock 5397440B` → the amount of pinned kernel memory reserved for this map (about ~5.1 MB here). 
-- `btf_id 490` → the [BPF Type Format (BTF)](https://docs.ebpf.io/concepts/btf/) ID associated with this map. We'll learn about BTF later on.
+- `303` → the map ID assigned by the kernel, which can be used to reference the map (e.g., with `bpftool map dump id 303`)
+- `hash` → the map type, in this case a hash map (`BPF_MAP_TYPE_HASH`)
+- `name exec_count` → the map’s name, set when it was defined in the eBPF program (e.g., `SEC("maps") struct { ... } exec_count`)
+- `flags 0x0` → creation flags for the map, with `0x0` meaning no special flags were used. Check the available flags for each map type [under the flags section in the documentation](https://docs.ebpf.io/linux/map-type/BPF_MAP_TYPE_HASH/)
+- `key 256B` → the key size, where each key is 256 bytes long corresponding to our `#define MAX_PATH 256` preprocessor macro definition macro
+- `value 8B` → the value size, where each value is 8 bytes corresponding to our count variable of type `__u64`
+- `max_entries 16384` → the maximum number of key-value pairs the map can hold
+- `memlock 5397440B` → the amount of pinned kernel memory reserved for this map (about ~5.15 MB)
+- `btf_id 490` → the [BPF Type Format (BTF)](https://docs.ebpf.io/concepts/btf/) ID associated with this map. We'll learn about BTF later on
 
-What about the “second eBPF map”?
+__________________________________________________
 
-We’ll dig into this in more detail later, but here’s the short version.
+**❓ What about the second `.rodata` eBPF map?**
+
+We’ll dig into this in more detail later, but here’s the short answer.
 
 In eBPF, things work differently compared to normal C programs:
 - There’s no heap (so you can’t just `malloc` memory).
 - You only have a small stack and some pointers into kernel space.
 
-To work around this,  **array maps** are automatically created (during eBPF program loading) as a storage for global data.  
-In our case, the data considered global is the string passed to the `bpf_printk` function, as explained in the [documentation](https://docs.ebpf.io/ebpf-library/libbpf/ebpf/bpf_printk/).
+To work around this,  **array maps** are automatically created (during eBPF program loading) as a storage for global data. In our case, the data considered global is the string passed to the `bpf_printk` function, as explained in the [documentation](https://docs.ebpf.io/ebpf-library/libbpf/ebpf/bpf_printk/).
 
-We can confirm this with:
+We can confirm this using:
 
 ```bash
 $ sudo bpftool map dump id 305 # Update the ID according to your output
@@ -267,7 +282,7 @@ $ sudo bpftool map dump id 305 # Update the ID according to your output
     }
 ]
 ```
-Where the sequence `101,120,101,99,118,101,58,32,37,115,10,0` is ASCII for `execve: %s\n`. Exactly the format string we provided to our `bpf_printk` call.
+Where the sequence `101,120,101,99,118,101,58,32,37,115,10,0` is ASCII for `execve: %s\n`. Exactly the format string we provided to our `bpf_printk` function call.
 
 ::
 
