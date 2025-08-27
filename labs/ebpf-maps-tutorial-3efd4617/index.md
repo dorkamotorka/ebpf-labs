@@ -216,7 +216,7 @@ A more useful approach would be to inspect the contents of our eBPF map directly
 
 This is achieved using [bpftool](https://github.com/libbpf/bpftool).
 
-As this in a eBPF playground, this tool is already install. Open (or go back to `Term 3` terminal) and list all the eBPF maps loaded on the system using:
+As this is an eBPF playground, this tool is already installed. Open (or go back to `Term 3` terminal) and list all the eBPF maps loaded on the system using:
 
 ```bash
 sudo bpftool map list
