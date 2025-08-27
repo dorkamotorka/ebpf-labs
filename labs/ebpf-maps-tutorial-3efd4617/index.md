@@ -127,10 +127,11 @@ int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
     }
 
     // Check whether this key (binary executable path) already exists in our map and 
-    // atomically update the value of the counter under that same key. (We'll talk about atomic operations in a different tutorial)
     __u64 *val = bpf_map_lookup_elem(&exec_count, &key);
     if (val) {
-        __sync_fetch_and_add(val, 1);
+        // Update the value of the counter under that key we found in the map
+        // NOTE: this is not a safe way to update the value - we'll learn about atomic operations in the upcoming tutorial
+        *val += 1;
     } else {
         // If this binary is executed for the first time since our eBPF application has been run, we just set the counter value to 1
         __u64 init = 1;
