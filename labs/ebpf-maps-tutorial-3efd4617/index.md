@@ -271,7 +271,9 @@ To work around this,  **array maps** are automatically created (during eBPF prog
 We can confirm this using:
 
 ```bash
-$ sudo bpftool map dump id 305 # Update the ID according to your output
+sudo bpftool map dump id 305 # Update the ID according to your output
+```
+```
 [{
         "value": {
             ".rodata": [{
@@ -298,7 +300,7 @@ If along the you encountered any issues, look inside the `ebpf-hello-world/lab3`
 
 Not to get confused, there is a legacy way of defining maps using the `struct bpf_map_def type`.
 
-```bash
+```c
 struct bpf_map_def exec_count = {
     .type = BPF_MAP_TYPE_HASH,
     .key_size = sizeof(struct path_key),
