@@ -207,7 +207,14 @@ PY
 )
 sudo bpftool map lookup id 5 key hex $keyhex
 ```
-**NOTE**: As we lookup using the hex value of the key, we need to provide the exact 256-byte key the map expects (slightly tedious and hard). The example perform the lookup on the `/bin/bash` key.
+
+::remark-box
+---
+kind: info
+---
+
+💡 As we lookup using the hex value of the key, we need to provide the exact 256-byte key the map expects (slightly tedious and hard). The example perform the lookup on the `/bin/bash` key.
+::
 
 Or update a value under a specific key in the map:
 
@@ -220,7 +227,14 @@ PY
 sudo bpftool map update id 5 key hex $keyhex value hex 2a 00 00 00 00 00 00 00
 ```
 
-**NOTE**: The map’s value size is 8 bytes (`__u64`) and we need to provide a hex value in [little-endian order](https://en.wikipedia.org/wiki/Endianness) (slightly tedious). In our case we set the value to `42` (`2a 00 00 00 00 00 00 00` in hex).
+
+::remark-box
+---
+kind: info
+---
+
+💡 The map’s value size is 8 bytes (`__u64`) and we need to provide a hex value in [little-endian order](https://en.wikipedia.org/wiki/Endianness) (slightly tedious). In our case we set the value to `42` (`2a 00 00 00 00 00 00 00` in hex).
+::
 
 Or delete a specific entry:
 
@@ -233,7 +247,7 @@ PY
 sudo bpftool map delete id 5 key hex $keyhex
 ```
 
-In practice, your eBPF application will do all the updates/lookups to the eBPF map, but while debugging your code - this commands come incredibly useful.
+In practice, your eBPF application will do all the updates/lookups to the eBPF map, but while debugging your code - these commands often come incredibly useful.
 
 #### Debugging and Tracing
 
@@ -255,23 +269,83 @@ But in general, `bpf_printk()` should only be utilized during the development. N
 
 #### Listing Available eBPF Features
 
-List features your current kernel actually supports.
-
-We can check the capabilities available in your kernel, using:
+List features your current kernel actually supports. You can check the eBPF capabilities available in this little VM kernel version, using:
 
 ```bash
 sudo bpftool feature probe kernel
 ```
+```
+Scanning system configuration...
+bpf() syscall for unprivileged users is enabled
+JIT compiler is enabled
+JIT compiler hardening is disabled
+JIT compiler kallsyms exports are enabled for root
+Global memory limit for JIT compiler for unprivileged users is 796917760 bytes
+CONFIG_BPF is set to y
+CONFIG_BPF_SYSCALL is set to y
+CONFIG_HAVE_EBPF_JIT is set to y
+CONFIG_BPF_JIT is set to y
+...
 
-This command outputs a detailed list of supported BPF program types, map types, helpers, and other kernel capabilities. It’s especially useful if you’re running on different distributions or kernel versions, since not every feature may be enabled or available.
+Scanning eBPF program types...
+eBPF program_type socket_filter is available
+eBPF program_type kprobe is available
+eBPF program_type tracepoint is available
+eBPF program_type xdp is available
+...
 
-For example, if you want to check whether your kernel supports specific eBPF maps or helpers like `bpf_loop()`, this probe will tell you.
-TODO: mention that this is not always the best way
+Scanning eBPF map types...
+eBPF map_type hash is available
+eBPF map_type array is available
+eBPF map_type prog_array is available
+eBPF map_type perf_event_array is available
+...
+Scanning eBPF helper functions...
+eBPF helpers supported for program type socket_filter:
+        - bpf_map_lookup_elem
+        - bpf_map_update_elem
+        - bpf_map_delete_elem
+        - bpf_ktime_get_ns
+        - bpf_get_prandom_u32
+...
+```
 
-And many other commands, but these are the most frequent that you'll see in the wild.
+The output is quite long and we haven't even yet covered this many eBPF program or map types, but you get the idea.
+
+This command is especially useful if you’re running on different distributions or kernel versions, since not every feature may be enabled or available.
+
+For example, if you want to check whether your kernel supports specific eBPF maps or helpers like `bpf_spin_lock()`, this probe will tell you. I mentioned `bpf_spin_lock()` we'll learn about it in the next tutorial.
+
+::details-box
+---
+:summary: Other ways to check available eBPF features
+---
+
+Using `bpftool feature probe kernel` is actually now always the best/one-size fit all solution to check for the available eBPF features. One downside is that it only reflects the features of the currently running kernel. There’s just no built-in way to check if a specific helper is supported in another kernel version—you’d have to run that version locally to find out.
+
+Our personal experience is that sometimes `bpftool` occasionally fails to determine helper support for certain program types. For those cases, you might see something like:
+```
+eBPF helpers supported for program type tracing: Could not determine which helpers are available
+```
+
+With that in mind, there are several other approaches that we outline in one of our [blog posts](https://ebpfchirp.substack.com/p/how-to-find-supported-ebpf-helper).
+
+::
+
+There's quite a lot more to the `bpftool`, but here we tried to outline some not so well known features, that will come handy as you move throughout these tutorials.
 
 ## Monitoring eBPF Applications
 
-TODO: bpftop
+Like with every software, running eBPF isn’t risk-free — it’s powerful, but also deeply tied into kernel execution. Monitoring matters for a few reasons:
+
+- **Performance impact**: Since eBPF runs in kernel space and attaches to hook points like syscalls or network path, a badly written or overly complex program can increase syscall latency, slow down networking, or burn CPU cycles. Monitoring helps catch these regressions.
+
+- **Safety & Stability**: Although the eBPF verifier ensures safety (no crashes, no memory corruption), it doesn’t guarantee performance correctness. An infinite loop may be rejected, but a program running “too hot” will still slow down the system.
+
+- **Operational Debugging**: If something in the system slows down or behaves unexpectedly, bpftop helps correlate the issue to specific eBPF programs. It’s the equivalent of using top to see which process is eating resources.
+
+In short: bpftop makes eBPF execution observable.
+
+TODO: add more
 
 Congrats, you've came to the end of this tutorial. 🥳
