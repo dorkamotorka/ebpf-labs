@@ -38,8 +38,19 @@ deb http://ddebs.ubuntu.com %s-proposed main restricted universe multiverse\n" \
     sudo apt-get update -y && \
     sudo apt-get install -y --no-install-recommends bpftrace-dbgsym 
 
-# libbpf-dev and asm include symlink
-RUN sudo apt-get install -y libbpf-dev
+# Install dependencies for building libbpf
+RUN apt-get update && apt-get install -y \
+        git make gcc clang libelf-dev zlib1g-dev pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build and install libbpf from source
+RUN git clone --depth=1 https://github.com/libbpf/libbpf.git /tmp/libbpf && \
+    cd /tmp/libbpf/src && \
+    make BUILD_STATIC_ONLY=0 OBJDIR=/tmp/libbpf/build DESTDIR=/usr install && \
+    rm -rf /tmp/libbpf
+
+# Ensure asm headers are accessible (same as your original)
+RUN ln -sf /usr/include/$(uname -m)-linux-gnu/asm /usr/include/asm
 
 # bpftool from source (with libbfd symlink)
 RUN sudo ln -sf /usr/lib/$(uname -m)-linux-gnu/libbfd.so /usr/lib/libbfd.so && \
@@ -50,7 +61,7 @@ RUN sudo ln -sf /usr/lib/$(uname -m)-linux-gnu/libbfd.so /usr/lib/libbfd.so && \
     sudo make install
 
 # Bpftop from source
-RUN sudo curl -fLJ https://github.com/Netflix/bpftop/releases/download/v0.5.2/bpftop-x86_64-unknown-linux-gnu -o bpftop && \
+RUN sudo curl -fLJ https://github.com/Netflix/bpftop/releases/latest/download/bpftop-x86_64-unknown-linux-gnu -o bpftop && \
     sudo chmod +x bpftop && \
     sudo mv bpftop /usr/bin/bpftop
 
