@@ -50,10 +50,9 @@ RUN sudo ln -sf /usr/lib/$(uname -m)-linux-gnu/libbfd.so /usr/lib/libbfd.so && \
     sudo make install
 
 # Bpftop from source
-RUN sudo curl -fLJ https://github.com/Netflix/bpftop/releases/latest/download/bpftop-x86_64-unknown-linux-gnu -o bpftop && \
+RUN sudo curl -fLJ https://github.com/Netflix/bpftop/releases/download/v0.5.2/bpftop-x86_64-unknown-linux-gnu -o bpftop && \
     sudo chmod +x bpftop && \
-    sudo mv bpftop /usr/bin/bpftop && \
-    sudo bpftop
+    sudo mv bpftop /usr/bin/bpftop
 
 # Golang from longsleep PPA
 RUN sudo add-apt-repository -y ppa:longsleep/golang-backports && \
