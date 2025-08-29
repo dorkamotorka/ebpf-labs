@@ -14,6 +14,9 @@ RUN sudo apt-get install -y --no-install-recommends \
         llvm \
         jq \
         git \
+        gcc \
+        zlib1g-dev \
+        pkg-config \
         libelf-dev \
         libcap-dev \
         libpcap-dev \
@@ -38,19 +41,14 @@ deb http://ddebs.ubuntu.com %s-proposed main restricted universe multiverse\n" \
     sudo apt-get update -y && \
     sudo apt-get install -y --no-install-recommends bpftrace-dbgsym 
 
-# Install dependencies for building libbpf
-RUN apt-get update && apt-get install -y \
-        git make gcc clang libelf-dev zlib1g-dev pkg-config \
-    && rm -rf /var/lib/apt/lists/*
-
 # Build and install libbpf from source
-RUN git clone --depth=1 https://github.com/libbpf/libbpf.git /tmp/libbpf && \
+RUN sudo git clone --depth=1 https://github.com/libbpf/libbpf.git /tmp/libbpf && \
     cd /tmp/libbpf/src && \
-    make BUILD_STATIC_ONLY=0 OBJDIR=/tmp/libbpf/build DESTDIR=/usr install && \
-    rm -rf /tmp/libbpf
+    sudo make BUILD_STATIC_ONLY=0 OBJDIR=/tmp/libbpf/build DESTDIR=/usr install && \
+    sudo rm -rf /tmp/libbpf
 
 # Ensure asm headers are accessible (same as your original)
-RUN ln -sf /usr/include/$(uname -m)-linux-gnu/asm /usr/include/asm
+RUN sudo ln -sf /usr/include/$(uname -m)-linux-gnu/asm /usr/include/asm
 
 # bpftool from source (with libbfd symlink)
 RUN sudo ln -sf /usr/lib/$(uname -m)-linux-gnu/libbfd.so /usr/lib/libbfd.so && \
