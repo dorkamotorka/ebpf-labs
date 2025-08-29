@@ -43,7 +43,7 @@ In this part, we’ll learn how and why to use [bpftool](https://github.com/libb
 ---
 ::
 
-Before we can inspect and monitor anything, we first need some eBPF application running. The code for this lab is in `ebpf-hello-world/lab3`. Open the `Term 1` terminal, navigate to this directory, then build and run the eBPF application as you did in the previous tutorials.
+Before we can inspect or monitor anything, we first need some eBPF application running. The code for this lab is in `ebpf-hello-world/lab3`. Open the `Term 1` terminal, navigate to this directory, then build and run the eBPF application as you did in the previous tutorials.
 
 ::details-box
 ---
@@ -91,14 +91,19 @@ And as noted in [the first tutorial](https://labs.iximiuz.com/tutorials/my-first
 
 Here are some common use cases of `bpftool`.
 
-#### Listing BPF Programs and Maps
+#### Listing and Inspecting eBPF Programs
 
-View a list of loaded eBPF programs and maps on your system. It provides information such as program IDs, names, types, and associated maps.
+View detailed information about eBPF programs. It allows you to retrieve attributes like which user loaded the eBPF program and when has it been loaded, or if it is attached or not.
 
 ```bash
-sudo bpftool map list # Shows all eBPF Maps loaded into the kernel
-# AND
 sudo bpftool prog list # Shows all eBPF programs currently loaded into the kernel, regardless of whether they are attached to a hook or not.
+```
+```
+...
+15: tracepoint  name handle_execve_tp  tag 8236b54ceef5a3ce  gpl
+        loaded_at 2025-08-28T07:36:11+0000  uid 0
+        xlated 560B  jited 375B  memlock 4096B  map_ids 5,7
+        btf_id 6
 ```
 
 ::details-box
@@ -111,21 +116,6 @@ An eBPF program is **loaded** when it has been verified and accepted into the ke
 A program becomes active and **attached** when it is bound to a specific hook or event source (like `tracepoint/syscalls/sys_enter_execve` in our example), meaning the kernel will actually run it when that event occurs.
 
 ::
-
-#### Inspecting eBPF Programs
-
-View detailed information about eBPF programs. It allows you to retrieve attributes like which user loaded the eBPF program and when has it been loaded.
-
-```bash
-sudo bpftool prog list # Get the program ID
-```
-```
-...
-15: tracepoint  name handle_execve_tp  tag 8236b54ceef5a3ce  gpl
-        loaded_at 2025-08-28T07:36:11+0000  uid 0
-        xlated 560B  jited 375B  memlock 4096B  map_ids 5,7
-        btf_id 6
-```
 
 The program in the example output has been assigned the ID 15. This "identity" is a number assigned to each program as it’s loaded. 
 
@@ -148,8 +138,7 @@ sudo bpftool prog show id 15 --pretty
     "jited": true,
     "bytes_jited": 375, 
     "bytes_memlock": 4096,
-    "map_ids": [5,7
-    ],
+    "map_ids": [5,7],
     "btf_id": 6
 }
 ```
@@ -159,29 +148,88 @@ sudo bpftool prog show id 15 --pretty
 :summary: What are all these output variables?
 ---
 
-- **id**: ID of the eBPF Program.
+- **id**: Unique ID of the eBPF program.
 - **type**: Type of the eBPF program.
 - **name**: Name of the eBPF program, which is the function name from the source code.
-- **tag**: SHA (Secure Hashing Algorithm) sum of the program’s instructions, which can be used as another identifier for the program. The program ID can vary every time you load or unload the program, but the tag will remain the same.
-- **gpl_compatible**: The program is defined with a GPL-compatible license. Check kernel program for the line `char _license[] SEC("license") = "GPL";`.
-- **loaded_at**: Unix timestamp showing when the program was loaded.
+- **tag**: [SHA (Secure Hashing Algorithm)](https://en.wikipedia.org/wiki/Secure_Hash_Algorithms) sum of the program’s instructions, which can be used as another identifier for the program. The program ID can vary every time you load or unload the program, but the tag will remain the same.
+- **gpl_compatible**: Whether the program is defined with a GPL-compatible license, i.e., `char _license[] SEC("license") = "GPL";` in our kernel code.
+- **loaded_at**: [Unix timestamp](https://en.wikipedia.org/wiki/Unix_time) showing when the program was loaded.
 - **uid**: User that loaded the eBPF program. In this case, it is User ID 0 (which is root).
 - **orphaned**: Whether the program is loaded in the kernel but no longer has any active attachment to a hook.
-- **bytes_xlated**: There are 560 bytes of translated eBPF bytecode in this program. This is the eBPF bytecode after it has passed through the verifier (and possibly been modified by the kernel for reasons we’ll discuss later). This is pretty low level, but it’s not quite machine code yet.
-- **jited**: Whether this program is JIT-compiled. eBPF uses a JIT compiler to convert translated eBPF bytecode to machine code that runs natively on the target CPU.
-- **bytes_jited**: The JIT compilation resulted in 375 bytes of machine code.
-- **bytes_memlock**: This program reserves 4,096 bytes of memory that won’t be paged out.
-- **map_ids**: To which eBPF Maps this program refers to.
-- **btf_id**: Indicates there is a block of BTF information for this program. We'll learn about BTF later.
+- **bytes_xlated**: Size of translated eBPF bytecode (e.g., 560 bytes) after verifier checks and possible kernel modifications; pretty low-level but not yet machine code.
+- **jited**: Whether the eBPF program was JIT-compiled from translated eBPF bytecode into native CPU instructions.
+- **bytes_jited**: Size of generated machine code after JIT compilation (e.g., 375 bytes).
+- **bytes_memlock**: Amount of memory reserved (e.g., 4,096 bytes) in RAM that cannot be paged out.
+- **map_ids**: IDs of eBPF maps referenced by this program.
+- **btf_id**: ID of the program’s associated BTF (BPF Type Format) information. We'll learn about BTF later.
 
 ::
 
-#### Managing eBPF Maps 
+We can also inspect the translated eBPF bytecode loaded into the kernel (after it’s been verified and possibly modified).
+
+```bash
+sudo bpftool prog dump xlated id 15
+```
+```
+int handle_execve_tp(struct trace_event_raw_sys_enter * ctx):
+; const char *filename = (const char *)ctx->args[0];
+   0: (79) r3 = *(u64 *)(r1 +16)
+   1: (b7) r1 = 0
+; struct path_key key = {};
+   2: (7b) *(u64 *)(r10 -8) = r1
+   3: (7b) *(u64 *)(r10 -16) = r1
+   4: (7b) *(u64 *)(r10 -24) = r1
+   5: (7b) *(u64 *)(r10 -32) = r1
+   6: (7b) *(u64 *)(r10 -40) = r1
+   7: (7b) *(u64 *)(r10 -48) = r1
+   8: (7b) *(u64 *)(r10 -56) = r1
+...
+```
+
+::remark-box
+---
+kind: info
+---
+
+💡 If you want to make sense of the xlated output, you also need to understand [how eBPF uses its registers](https://www.kernel.org/doc/html/v5.17/bpf/instruction-set.html) to pass arguments, store values, and communicate results.
+::
+
+
+Or even look at the JIT-compiled machine code produced for the same program:
+
+```bash
+sudo bpftool prog dump jited id 15
+```
+```
+int handle_execve_tp(struct trace_event_raw_sys_enter * ctx):
+bpf_prog_8236b54ceef5a3ce_handle_execve_tp:
+; const char *filename = (const char *)ctx->args[0];
+   0:   nopl   0x0(%rax,%rax,1)
+   5:   xchg   %ax,%ax
+   7:   push   %rbp
+   8:   mov    %rsp,%rbp
+   b:   sub    $0x108,%rsp
+  12:   mov    0x10(%rdi),%rdx
+  16:   xor    %edi,%edi
+; struct path_key key = {};
+  18:   mov    %rdi,-0x8(%rbp)
+  1c:   mov    %rdi,-0x10(%rbp)
+  20:   mov    %rdi,-0x18(%rbp)
+  24:   mov    %rdi,-0x20(%rbp)
+  28:   mov    %rdi,-0x28(%rbp)
+  2c:   mov    %rdi,-0x30(%rbp)
+  30:   mov    %rdi,-0x38(%rbp)
+...
+```
+
+This lets you debug or simply learn how your original C code is transformed first into eBPF instructions and then into native CPU instructions.
+
+#### Listing and Managing eBPF Maps 
 
 Lookup, create, update, and delete eBPF map entries. You can specify the map type, key size, value size, and other relevant parameters while creating or modifying a map.
 
 ```bash
-sudo bpftool map list # Get the map ID
+sudo bpftool map list # Shows all eBPF Maps loaded into the kernel
 ```
 ```
 ...
@@ -213,7 +261,7 @@ sudo bpftool map lookup id 5 key hex $keyhex
 kind: info
 ---
 
-💡 As we lookup using the hex value of the key, we need to provide the exact 256-byte key the map expects (slightly tedious and hard). The example perform the lookup on the `/bin/bash` key.
+💡 Since we perform the lookup using the hex value of the key, we need to provide the exact 256-byte key the map expects. In our example, we perform the lookup using the `/bin/bash` key which is slightly tedious to convert.
 ::
 
 Or update a value under a specific key in the map:
@@ -263,9 +311,9 @@ But exactly the same, can be achieved using:
 sudo bpftool prog trace
 ```
 
-There’s NO `--prog` or `--id` flag in `bpftool prog trace` to only show logs from one eBPF program, so whichever program calls `bpf_printk()`, the logs are mixed together in the output of these commands.
+There’s **NO** `--prog` or `--id` flag in `bpftool prog trace` to only show logs from one eBPF program. So, whichever program calls `bpf_printk()`, the logs are mixed together in the output of these commands.
 
-But in general, `bpf_printk()` should only be utilized during the development. Not only high-frequency events can overwhelm the trace buffer and the output of the mentioned commands is corrupted, but also they can cause significant performance overhead on your eBPF application.
+Anyways, `bpf_printk()` should only be utilized during the development. Not only high-frequency events can overwhelm the trace buffer and the output of the mentioned commands is corrupted, but also they can cause significant performance overhead on your eBPF application.
 
 #### Listing Available eBPF Features
 
@@ -336,16 +384,40 @@ There's quite a lot more to the `bpftool`, but here we tried to outline some not
 
 ## Monitoring eBPF Applications
 
-Like with every software, running eBPF isn’t risk-free — it’s powerful, but also deeply tied into kernel execution. Monitoring matters for a few reasons:
+When you’re running multiple eBPF programs in the kernel, it’s not always obvious what they’re doing or how much impact they’re having on the system. That’s where [bpftop](https://github.com/Netflix/bpftop) (developed by Netflix) comes in—a top-like tool for eBPF that lets you monitor loaded programs.
 
-- **Performance impact**: Since eBPF runs in kernel space and attaches to hook points like syscalls or network path, a badly written or overly complex program can increase syscall latency, slow down networking, or burn CPU cycles. Monitoring helps catch these regressions.
+Since this in a eBPF playground, this tool is already installed. Run it, using:
 
-- **Safety & Stability**: Although the eBPF verifier ensures safety (no crashes, no memory corruption), it doesn’t guarantee performance correctness. An infinite loop may be rejected, but a program running “too hot” will still slow down the system.
+```bash
+sudo bpftop
+```
 
-- **Operational Debugging**: If something in the system slows down or behaves unexpectedly, bpftop helps correlate the issue to specific eBPF programs. It’s the equivalent of using top to see which process is eating resources.
+::slide-show
+---
+slides:
+- image: __static__/bpftop-1.png
+  alt: Choose the eBPF program to monitor
+- image: __static__/bpftop-2.png
+  alt: Monitor the eBPF program
+---
+::
 
-In short: bpftop makes eBPF execution observable.
+When you start `bpftop` it's gonna open a list of all the eBPF programs running in the kernel (first image). Choose your program using &darr; and &uarr; and click `Enter`.
 
-TODO: add more
+After that, you will see four panels (second image):
+
+- **Top-left (Program Information)**: Program ID, type, name and user space processes that reference BPF programs (in our case our `lab3` binary).
+- **Top-right (Total CPU %)**: Time-series of CPU usage for the program (moving avg ~0.0008%, max 0.004%).
+- **Bottom-left (Events per second)**: Bursty executions with peaks up to 4 eps and a moving avg of 1.
+- **Bottom-right (Avg Runtime in ns)**: Execution time per run; moving avg ~3367 ns (~3.3 µs), max ~12090 ns, shown as periodic spikes corresponding to occuring events (captured `execve()` syscalls).
+
+::remark-box
+---
+kind: info
+---
+
+💡 bpftop enables global eBPF runtime stats via BPF_ENABLE_STATS (disabled by default). The per-run accounting (timestamps, counters/atomics) adds overhead and can hurt throughput/latency—especially at high rates—so enable it only for debugging or profiling.
+
+::
 
 Congrats, you've came to the end of this tutorial. 🥳
