@@ -14,9 +14,6 @@ RUN sudo apt-get install -y --no-install-recommends \
         llvm \
         jq \
         git \
-        gcc \
-        zlib1g-dev \
-        pkg-config \
         libelf-dev \
         libcap-dev \
         libpcap-dev \
@@ -41,14 +38,9 @@ deb http://ddebs.ubuntu.com %s-proposed main restricted universe multiverse\n" \
     sudo apt-get update -y && \
     sudo apt-get install -y --no-install-recommends bpftrace-dbgsym 
 
-# Build and install libbpf from source
-RUN sudo git clone --depth=1 https://github.com/libbpf/libbpf.git /tmp/libbpf && \
-    cd /tmp/libbpf/src && \
-    sudo make BUILD_STATIC_ONLY=0 OBJDIR=/tmp/libbpf/build DESTDIR=/usr install && \
-    sudo rm -rf /tmp/libbpf
-
-# Ensure asm headers are accessible (same as your original)
-RUN sudo ln -sf /usr/include/$(uname -m)-linux-gnu/asm /usr/include/asm
+# libbpf-dev and asm include symlink
+RUN sudo apt-get install -y libbpf-dev && \
+    sudo ln -sf /usr/include/$(uname -m)-linux-gnu/asm /usr/include/asm
 
 # bpftool from source (with libbfd symlink)
 RUN sudo ln -sf /usr/lib/$(uname -m)-linux-gnu/libbfd.so /usr/lib/libbfd.so && \
@@ -57,11 +49,6 @@ RUN sudo ln -sf /usr/lib/$(uname -m)-linux-gnu/libbfd.so /usr/lib/libbfd.so && \
     sudo git submodule update --init && \
     cd src && \
     sudo make install
-
-# Bpftop from source
-RUN sudo curl -fLJ https://github.com/Netflix/bpftop/releases/latest/download/bpftop-x86_64-unknown-linux-gnu -o bpftop && \
-    sudo chmod +x bpftop && \
-    sudo mv bpftop /usr/bin/bpftop
 
 # Golang from longsleep PPA
 RUN sudo add-apt-repository -y ppa:longsleep/golang-backports && \
