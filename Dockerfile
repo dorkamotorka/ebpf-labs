@@ -39,8 +39,7 @@ deb http://ddebs.ubuntu.com %s-proposed main restricted universe multiverse\n" \
     sudo apt-get install -y --no-install-recommends bpftrace-dbgsym 
 
 # libbpf-dev and asm include symlink
-RUN sudo apt-get install -y libbpf-dev && \
-    sudo ln -sf /usr/include/$(uname -m)-linux-gnu/asm /usr/include/asm
+RUN sudo apt-get install -y libbpf-dev
 
 # bpftool from source (with libbfd symlink)
 RUN sudo ln -sf /usr/lib/$(uname -m)-linux-gnu/libbfd.so /usr/lib/libbfd.so && \
