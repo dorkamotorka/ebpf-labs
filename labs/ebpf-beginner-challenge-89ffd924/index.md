@@ -1,10 +1,10 @@
 ---
 kind: challenge
 
-title: eBPF Beginner Challenge
+title: eBPF Beginner Challenge (TODO)
 
 description: |
-  Begginer challenge description
+  TODO
 
 categories:
 - linux
@@ -36,7 +36,7 @@ tasks:
 
 _Begginer challenge description_
 
-Docs: [How to Author Challenges on iximiuz Labs](/challenges/sample-challenge)
+Docs: https://github.com/iximiuz/labs-content-samples/blob/main/sample-challenge/index.md
 
 ::simple-task
 ---
