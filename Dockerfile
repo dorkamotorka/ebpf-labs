@@ -54,12 +54,12 @@ RUN printf 'Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/
   && sudo visudo -cf /etc/sudoers
 
 # Verify installation
-RUN sudo cargo --version
+RUN cargo --version
 
 # Install bpftop from source
 RUN sudo git clone https://github.com/Netflix/bpftop.git && \
     cd bpftop && \
-    sudo cargo build --release && \
+    cargo build --release && \
     sudo cp target/release/bpftop /usr/bin
 
 # bpftool from source (with libbfd symlink)
