@@ -47,12 +47,12 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 # Add cargo to PATH permanently
 ENV PATH="/root/.cargo/bin:${PATH}"
 # Verify installation
-RUN cargo --version
+RUN sudo cargo --version
 
 # Install bpftop from source
 RUN sudo git clone https://github.com/Netflix/bpftop.git && \
     cd bpftop && \
-    cargo build --release && \
+    sudo cargo build --release && \
     sudo cp target/release/bpftop /usr/bin
 
 # bpftool from source (with libbfd symlink)
