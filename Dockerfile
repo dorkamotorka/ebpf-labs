@@ -42,6 +42,14 @@ deb http://ddebs.ubuntu.com %s-proposed main restricted universe multiverse\n" \
 RUN sudo apt-get install -y libbpf-dev && \
     sudo ln -sf /usr/include/$(uname -m)-linux-gnu/asm /usr/include/asm
 
+# bpftop from source
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y &&
+    source ~/.bashrc
+    git clone https://github.com/Netflix/bpftop.git &&
+    cd bpftop &&
+    cargo build --release &&
+    sudo cp target/release/bpftop /usr/bin
+
 # bpftool from source (with libbfd symlink)
 RUN sudo ln -sf /usr/lib/$(uname -m)-linux-gnu/libbfd.so /usr/lib/libbfd.so && \
     sudo git clone --recurse-submodules https://github.com/libbpf/bpftool.git && \
@@ -49,11 +57,6 @@ RUN sudo ln -sf /usr/lib/$(uname -m)-linux-gnu/libbfd.so /usr/lib/libbfd.so && \
     sudo git submodule update --init && \
     cd src && \
     sudo make install
-
-# bpftop from releases
-RUN sudo curl -fLJ https://github.com/Netflix/bpftop/releases/latest/download/bpftop-x86_64-unknown-linux-gnu -o bpftop && \
-    sudo chmod +x bpftop && \
-    sudo mv bpftop /usr/bin/
 
 # Golang from longsleep PPA
 RUN sudo add-apt-repository -y ppa:longsleep/golang-backports && \
