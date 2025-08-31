@@ -48,9 +48,9 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Make sudo look in ~/.cargo/bin
-RUN printf 'Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.cargo/bin"\n' \
+RUN sudo printf 'Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.cargo/bin"\n' \
   > /etc/sudoers.d/01-cargo-path \
-  && visudo -cf /etc/sudoers
+  && sudo visudo -cf /etc/sudoers
 
 # Verify installation
 RUN sudo cargo --version
