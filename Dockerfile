@@ -43,9 +43,9 @@ RUN sudo apt-get install -y libbpf-dev && \
     sudo ln -sf /usr/include/$(uname -m)-linux-gnu/asm /usr/include/asm
 
 # Install cargo
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y && \
-    source $HOME/.cargo/env && \
-    cargo --version
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+# Source bashrc so cargo is available
+RUN bash -c "source $HOME/.cargo/env && cargo --version"
 
 # Install bpftop from source
 RUN sudo git clone https://github.com/Netflix/bpftop.git && \
