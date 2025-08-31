@@ -48,6 +48,13 @@ When you want to store a state in eBPF kernel program, there are several eBPF Ma
 
 Which map type to use depends heavily on your specific use case. We’ll cover the design choices in another tutorial, but for our example, we’ll just use a **Hash Map**.
 
+::image-box
+---
+:src: __static__/ebpf-map2.png
+:alt: 'Storing state in eBPF Applications'
+---
+::
+
 Before we can use an eBPF map in our kernel program, we need to define it. Navigate to the `ebpf-hello-world/lab2` folder with either using the `Term 1` terminal or the `IDE`. Then, open the `hello.c` file.
 
 Inside, add the following code lines and eBPF map definition (under Step 1):
@@ -145,14 +152,7 @@ int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
 }
 ```
 
-It might feel like a lot to take in at first, so we’ve added detailed comments to each line of code. Here's also an illustration to make it easier to understand.
-
-::image-box
----
-:src: __static__/ebpf-map2.png
-:alt: 'Storing state in eBPF Applications'
----
-::
+It might feel like a lot to take in at first, so we’ve added detailed comments to each line of code.
 
 The interesting lines of code, related to the eBPF map are:
 

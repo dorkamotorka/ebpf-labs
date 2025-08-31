@@ -34,7 +34,7 @@ When you start the tutorial, you’ll see a `Term 1` terminal and an `IDE` on th
 
 This tutorial serves as the continuation of [From Zero to Your First eBPF Program](https://labs.iximiuz.com/tutorials/my-first-ebpf-program-5120140e) and [Storing Data in eBPF: Your First eBPF Map](https://labs.iximiuz.com/tutorials/ebpf-maps-tutorial-3efd4617), expanding on the introduced concepts.
 
-In this part, we’ll learn how and why to use [bpftool](https://github.com/libbpf/bpftool) to inspect eBPF programs and maps in the kernel, and [bpftop](https://github.com/Netflix/bpftop), a top-like interface for monitoring eBPF program activity in real time.
+In this part, we’ll learn how to use [bpftool](https://github.com/libbpf/bpftool) to inspect eBPF programs and maps in the kernel, and [bpftop](https://github.com/Netflix/bpftop), a top-like interface for monitoring eBPF program activity in real time.
 
 ::image-box
 ---
@@ -43,19 +43,19 @@ In this part, we’ll learn how and why to use [bpftool](https://github.com/libb
 ---
 ::
 
-Before we can inspect or monitor anything, we first need some eBPF application running. The code for this lab is in `ebpf-hello-world/lab3`. Open the `Term 1` terminal, navigate to this directory, then build and run the eBPF application as you did in the previous tutorials.
+Before we can inspect or monitor anything, we first need some eBPF application running. The code for this lab is in `ebpf-hello-world/lab3` directory. Open the `Term 1` terminal, navigate to this folder, then build and run the eBPF application as you did in the previous tutorials.
 
 ::details-box
 ---
 :summary: Forgot how to do it?
 ---
 
-Using `go generate` you compile the eBPF kernel program (`hello.c`) into an object file (`hello_bpf.o`) and generates a Go source file (`hello_bpf.go`) that embeds the object and provides helper functions to work with it.
+Using `go generate` you compile the eBPF kernel program (`hello.c`) into an object file (`hello_bpf.o`) and generate a Go source file (`hello_bpf.go`) that embeds the object and provides user space helper functions to work with it.
 ```bash
 go generate
 ```
 
-Then `go build` picks up the `main.go` and `hello_bpf.go` and builds the final eBPF application binary `lab3`
+Then `go build` picks up the `main.go` and `hello_bpf.go` and builds the final eBPF application binary `lab3`.
 ```bash
 go build
 ```
@@ -68,7 +68,7 @@ sudo ./lab3
 
 ## Inspecting eBPF Applications
 
-Inspecting eBPF applications comes useful for debugging and validation, since it lets you confirm that your programs and maps are correctly loaded into the kernel. It also gives you visibility into the internal state of maps, so you can track how data changes over time - like our `exec_count` eBPF map in our previous tutorial.
+Inspecting eBPF applications is useful for debugging and validation, since it lets you confirm that your programs and maps are correctly loaded into the kernel, or when and by whom the program was loaded. It also gives you visibility into the internal state of maps, so you can track how map entries change over time - like our `exec_count` eBPF map in our previous tutorial.
 
 The most widely used tool for this purpose is [bpftool](https://github.com/libbpf/bpftool), maintained within the upstream Linux kernel.
 
@@ -85,7 +85,7 @@ sudo bpftool --help
 
 Most `bpftool` operations interact directly with the kernel. Loading, attaching, or inspecting eBPF programs and maps requires privileged access to kernel resources.
 
-And as noted in [the first tutorial](https://labs.iximiuz.com/tutorials/my-first-ebpf-program-5120140e), these actions are restricted to processes with `CAP_BPF`, `CAP_SYS_ADMIN`, or other specific capabilities—privileges that are normally only available to root (or a process started with `sudo`).
+As noted in [the first tutorial](https://labs.iximiuz.com/tutorials/my-first-ebpf-program-5120140e#running-the-ebpf-application), these actions are limited to processes with `CAP_BPF`, `CAP_SYS_ADMIN`, or other specific capabilities—privileges typically granted only to root or processes started with `sudo`.
 
 ::
 
@@ -93,7 +93,7 @@ Here are some common use cases of `bpftool`.
 
 #### Listing and Inspecting eBPF Programs
 
-View detailed information about eBPF programs. It allows you to retrieve attributes like which user loaded the eBPF program and when has it been loaded, or if it is attached or not.
+You can use `bpftool` to view detailed information about eBPF programs. This includes attributes such as which user loaded the program, when it was loaded, and whether it is currently attached.
 
 ```bash
 sudo bpftool prog list # Shows all eBPF programs currently loaded into the kernel, regardless of whether they are attached to a hook or not.
@@ -111,13 +111,13 @@ sudo bpftool prog list # Shows all eBPF programs currently loaded into the kerne
 :summary: What is the difference between loaded and attached eBPF program?
 ---
 
-An eBPF program is **loaded** when it has been verified and accepted into the kernel, but it isn’t yet active. We'll talk about the verification process in an upcoming tutorial.
+An eBPF program is **loaded** when it has been [verified](https://docs.ebpf.io/linux/concepts/verifier/) and accepted into the kernel, but it isn’t yet active. We'll talk about the verification process in an upcoming tutorial.
 
-A program becomes active and **attached** when it is bound to a specific hook or event source (like `tracepoint/syscalls/sys_enter_execve` in our example), meaning the kernel will actually run it when that event occurs.
+A program becomes active and **attached** when it is bound to a specific hook (like `tracepoint/syscalls/sys_enter_execve` in our code example), meaning the kernel will actually run it when that event occurs.
 
 ::
 
-The program in the example output has been assigned the ID 15. This "identity" is a number assigned to each program as it’s loaded. 
+The program in the example output above has been assigned the **ID 15**. This "identity" is a unique number assigned to each eBPF program when it’s loaded into the kernel. 
 
 Knowing the ID, you can ask `bpftool` to show more information about this program.
 
@@ -151,7 +151,7 @@ sudo bpftool prog show id 15 --pretty
 - **id**: Unique ID of the eBPF program.
 - **type**: Type of the eBPF program.
 - **name**: Name of the eBPF program, which is the function name from the source code.
-- **tag**: [SHA (Secure Hashing Algorithm)](https://en.wikipedia.org/wiki/Secure_Hash_Algorithms) sum of the program’s instructions, which can be used as another identifier for the program. The program ID can vary every time you load or unload the program, but the tag will remain the same.
+- **tag**: [SHA (Secure Hashing Algorithm)](https://en.wikipedia.org/wiki/Secure_Hash_Algorithms) sum of the program’s instructions, which can be used as another identifier for the program. The program ID can change every time you load or unload the program, but the tag will remain the same.
 - **gpl_compatible**: Whether the program is defined with a GPL-compatible license, i.e., `char _license[] SEC("license") = "GPL";` in our kernel code.
 - **loaded_at**: [Unix timestamp](https://en.wikipedia.org/wiki/Unix_time) showing when the program was loaded.
 - **uid**: User that loaded the eBPF program. In this case, it is User ID 0 (which is root).
@@ -165,7 +165,7 @@ sudo bpftool prog show id 15 --pretty
 
 ::
 
-We can also inspect the translated eBPF bytecode loaded into the kernel (after it’s been verified and possibly modified).
+We can also inspect the eBPF bytecode loaded into the kernel (after it’s been verified and possibly modified).
 
 ```bash
 sudo bpftool prog dump xlated id 15
@@ -194,8 +194,7 @@ kind: info
 💡 If you want to make sense of the xlated output, you also need to understand [how eBPF uses its registers](https://www.kernel.org/doc/html/v5.17/bpf/instruction-set.html) to pass arguments, store values, and communicate results.
 ::
 
-
-Or even look at the JIT-compiled machine code produced for the same program:
+Or even look at the Just-in-Time (JIT) compiled machine code produced for the same program:
 
 ```bash
 sudo bpftool prog dump jited id 15
@@ -226,7 +225,7 @@ This lets you debug or simply learn how your original C code is transformed firs
 
 #### Listing and Managing eBPF Maps 
 
-Lookup, create, update, and delete eBPF map entries. You can specify the map type, key size, value size, and other relevant parameters while creating or modifying a map.
+With `bpftool`, you can also list, create, update, and delete eBPF map entries.
 
 ```bash
 sudo bpftool map list # Shows all eBPF Maps loaded into the kernel
@@ -281,7 +280,7 @@ sudo bpftool map update id 5 key hex $keyhex value hex 2a 00 00 00 00 00 00 00
 kind: info
 ---
 
-💡 The map’s value size is 8 bytes (`__u64`) and we need to provide a hex value in [little-endian order](https://en.wikipedia.org/wiki/Endianness) (slightly tedious). In our case we set the value to `42` (`2a 00 00 00 00 00 00 00` in hex).
+💡 The map’s value size is 8 bytes (`__u64`), so we must provide it in [little-endian order](https://en.wikipedia.org/wiki/Endianness). In this case, setting the value to `42` is expressed as `2a 00 00 00 00 00 00 00`.
 ::
 
 Or delete a specific entry:
@@ -295,11 +294,11 @@ PY
 sudo bpftool map delete id 5 key hex $keyhex
 ```
 
-In practice, your eBPF application will do all the updates/lookups to the eBPF map, but while debugging your code - these commands often come incredibly useful.
+In practice, your eBPF applications will do all the updates/lookups to the eBPF map, but while debugging your code - these commands often come quite useful.
 
 #### Debugging and Tracing
 
-Offers features for debugging and tracing eBPF programs. Until now, we always printed the logs using:
+Up to this point, we’ve always printed the eBPF kernel program logs using:
 
 ```bash
 sudo cat /sys/kernel/debug/tracing/trace_pipe
@@ -311,13 +310,43 @@ But exactly the same, can be achieved using:
 sudo bpftool prog trace
 ```
 
-There’s **NO** `--prog` or `--id` flag in `bpftool prog trace` to only show logs from one eBPF program. So, whichever program calls `bpf_printk()`, the logs are mixed together in the output of these commands.
+There’s **NO** `--prog` or `--id` flag in `bpftool prog trace` to only show logs from one particular eBPF program. So, whichever program calls `bpf_printk()`, the logs are all combined and interleaved in the output of this command.
 
 Anyways, `bpf_printk()` should only be utilized during the development. Not only high-frequency events can overwhelm the trace buffer and the output of the mentioned commands is corrupted, but also they can cause significant performance overhead on your eBPF application.
 
+#### Generating the `vmlinux.h` File
+
+At a high level, an eBPF program needs access to kernel context and data structures to do anything meaningful. 
+
+For example, when tracing the `execve` system call, we accessed the executable path and its arguments. These are exposed through the `trace_event_raw_sys_enter` struct — which is defined in `vmlinux.h`.
+
+This header can be generated from `/sys/kernel/btf/vmlinux`, a file that contains the kernel’s type information (structs, enums, typedefs, function prototypes, etc.), using:
+
+```bash
+bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h
+```
+
+::remark-box
+---
+kind: info
+---
+
+💡 We’ve included this file in the code repository to make the examples feel more plug-and-play. In practice, however, this only makes sense in environments where the kernel version is fixed (e.g., a VM image like this one). 
+
+For other cases, the header should be generated at build time, either through the `Makefile` or a `//go:generate` directive in user space program.
+
+```go
+//go:generate sh -c "bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h"
+```
+::
+
 #### Listing Available eBPF Features
 
-List features your current kernel actually supports. You can check the eBPF capabilities available in this little VM kernel version, using:
+If you've followed carefully, we’ve used several eBPF helper functions so far, such as `bpf_probe_read_user_str`, `bpf_map_lookup_elem`, and `bpf_map_update_elem` in our kernel program. 
+
+But where can you find the complete list of helpers, and are they all available for every program type?
+
+In fact, you can check the eBPF features supported by your kernel with:
 
 ```bash
 sudo bpftool feature probe kernel
@@ -358,33 +387,33 @@ eBPF helpers supported for program type socket_filter:
 ...
 ```
 
-The output is quite long and we haven't even yet covered this many eBPF program or map types, but you get the idea.
+The output is quite long, and we haven’t yet covered most of these eBPF program or helper functions—but you get the idea.
 
-This command is especially useful if you’re running on different distributions or kernel versions, since not every feature may be enabled or available.
+This command is especially useful when developing programs across different distributions or kernel versions, since not every feature is always enabled or available.
 
-For example, if you want to check whether your kernel supports specific eBPF maps or helpers like `bpf_spin_lock()`, this probe will tell you. I mentioned `bpf_spin_lock()` we'll learn about it in the next tutorial.
+For example, if you want to check whether your eBPF program type supports `bpf_get_socket_cookie()` helper function (returns a unique, stable identifier for a socket, allowing you to correlate packets with the same connection across different hooks), this command will tell you.
 
 ::details-box
 ---
 :summary: Other ways to check available eBPF features
 ---
 
-Using `bpftool feature probe kernel` is actually now always the best/one-size fit all solution to check for the available eBPF features. One downside is that it only reflects the features of the currently running kernel. There’s just no built-in way to check if a specific helper is supported in another kernel version—you’d have to run that version locally to find out.
+`bpftool feature probe kernel` is useful, but not always a one-size-fits-all solution. A limitation is that it only reports features of the currently running kernel and there’s no built-in way to check whether a specific helper is supported in another kernel version without running that kernel.
 
-Our personal experience is that sometimes `bpftool` occasionally fails to determine helper support for certain program types. For those cases, you might see something like:
+In our experience, `bpftool` can also fail to determine helper support for certain program types, showing messages like:
 ```
 eBPF helpers supported for program type tracing: Could not determine which helpers are available
 ```
 
-With that in mind, there are several other approaches that we outline in one of our [blog posts](https://ebpfchirp.substack.com/p/how-to-find-supported-ebpf-helper).
+With that in mind, we outlined several alternative approaches in one of our [blog posts](https://ebpfchirp.substack.com/p/how-to-find-supported-ebpf-helper).
 
 ::
 
-There's quite a lot more to the `bpftool`, but here we tried to outline some not so well known features, that will come handy as you move throughout these tutorials.
+There’s much more to `bpftool`, but here we’ve highlighted some lesser-known features that will come in handy as you progress through these tutorials.
 
 ## Monitoring eBPF Applications
 
-When you’re running multiple eBPF programs in the kernel, it’s not always obvious what they’re doing or how much impact they’re having on the system. That’s where [bpftop](https://github.com/Netflix/bpftop) (developed by Netflix) comes in—a top-like tool for eBPF that lets you monitor loaded programs.
+When you’re running multiple eBPF programs in the kernel, it’s not always directly obvious what they’re doing or how much impact they’re having on the system. That’s where [bpftop](https://github.com/Netflix/bpftop) (developed by Netflix) comes in—a top-like tool for eBPF that lets you monitor your programs.
 
 Since this in a eBPF playground, this tool is already installed. Run it, using:
 
@@ -416,7 +445,7 @@ After that, you will see four panels (second image):
 kind: info
 ---
 
-💡 bpftop enables global eBPF runtime stats via BPF_ENABLE_STATS (disabled by default). The per-run accounting (timestamps, counters/atomics) adds overhead and can hurt throughput/latency—especially at high rates—so enable it only for debugging or profiling.
+💡 bpftop enables global eBPF runtime stats via `BPF_ENABLE_STATS` (disabled by default). The per-run monitoring (timestamps, counters/atomics) adds overhead and can hurt throughput/latency—especially at high rates—so it's should be used only for debugging or profiling during development.
 
 ::
 
