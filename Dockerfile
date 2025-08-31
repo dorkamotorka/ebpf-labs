@@ -45,18 +45,20 @@ RUN sudo apt-get install -y libbpf-dev && \
 # Make sure we're root for the install
 USER root
 
-# Install Rust to /usr/local so it's visible to all users
-ENV RUSTUP_HOME=/usr/local/rustup
-ENV CARGO_HOME=/usr/local/cargo
-ENV PATH="/usr/local/cargo/bin:${PATH}"
+# System-wide locations
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
 
+# Install rustup + stable toolchain
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-  | sh -s -- -y --profile minimal
+    | sh -s -- -y --profile minimal --default-toolchain stable
 
-# Optional: make sure binaries are on a common PATH
+# (Optional) expose binaries on common PATH
 RUN ln -s /usr/local/cargo/bin/* /usr/local/bin/ || true
 
-# Now sudo can see cargo without PATH tricks
+# Verify (sudo now sees it too)
+RUN cargo --version && rustc --version
 RUN sudo cargo --version
 
 # Install bpftop from source
