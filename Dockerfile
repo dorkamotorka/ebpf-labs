@@ -42,19 +42,19 @@ deb http://ddebs.ubuntu.com %s-proposed main restricted universe multiverse\n" \
 RUN sudo apt-get install -y libbpf-dev && \
     sudo ln -sf /usr/include/$(uname -m)-linux-gnu/asm /usr/include/asm
 
-# Install cargo
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
-# Add cargo to PATH permanently
-ENV PATH="/root/.cargo/bin:${PATH}"
+# Install Rust to /usr/local so it's visible to all users
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH="/usr/local/cargo/bin:${PATH}"
 
-# Add cargo to sudo's secure_path
-RUN printf 'Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.cargo/bin"\n' \
-  | sudo tee /etc/sudoers.d/01-cargo-path >/dev/null \
-  && sudo chmod 0440 /etc/sudoers.d/01-cargo-path \
-  && sudo visudo -cf /etc/sudoers
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+  | sh -s -- -y --profile minimal
 
-# Verify installation
-RUN cargo --version
+# Optional: make sure binaries are on a common PATH
+RUN ln -s /usr/local/cargo/bin/* /usr/local/bin/ || true
+
+# Now sudo can see cargo without PATH tricks
+RUN sudo cargo --version
 
 # Install bpftop from source
 RUN sudo git clone https://github.com/Netflix/bpftop.git && \
