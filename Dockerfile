@@ -54,6 +54,8 @@ ENV RUSTUP_HOME=/usr/local/rustup \
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --profile minimal --default-toolchain stable
 
+RUN rustup component add rustfmt
+
 # (Optional) expose binaries on common PATH
 RUN ln -s /usr/local/cargo/bin/* /usr/local/bin/ || true
 
