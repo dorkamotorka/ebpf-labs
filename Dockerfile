@@ -50,7 +50,7 @@ RUN sudo ln -sf /usr/lib/$(uname -m)-linux-gnu/libbfd.so /usr/lib/libbfd.so && \
     cd src && \
     sudo make install
 
-# bpftop from binary releases
+# bpftop from releases
 RUN sudo curl -fLJ https://github.com/Netflix/bpftop/releases/latest/download/bpftop-x86_64-unknown-linux-gnu -o bpftop && \
     sudo chmod +x bpftop && \
     sudo mv bpftop /usr/bin/
