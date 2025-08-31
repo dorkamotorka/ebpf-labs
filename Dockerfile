@@ -42,10 +42,11 @@ deb http://ddebs.ubuntu.com %s-proposed main restricted universe multiverse\n" \
 RUN sudo apt-get install -y libbpf-dev && \
     sudo ln -sf /usr/include/$(uname -m)-linux-gnu/asm /usr/include/asm
 
-# bpftop from source
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y &&
-    source ~/.bashrc
-    git clone https://github.com/Netflix/bpftop.git &&
+# Install cargo
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+
+# Install bpftop from source
+RUN git clone https://github.com/Netflix/bpftop.git &&
     cd bpftop &&
     cargo build --release &&
     sudo cp target/release/bpftop /usr/bin
