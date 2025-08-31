@@ -435,7 +435,7 @@ When you start `bpftop` it's gonna open a list of all the eBPF programs running 
 
 After that, you will see four panels (second image):
 
-- **Top-left (Program Information)**: Program ID, type, name and user space processes that reference BPF programs (in our case our `lab3` binary).
+- **Top-left (Program Information)**: Program ID, type, name and user space processes that reference BPF programs (might be empty for older kernels).
 - **Top-right (Total CPU %)**: Time-series of CPU usage for the program (moving avg ~0.0008%, max 0.004%).
 - **Bottom-left (Events per second)**: Bursty executions with peaks up to 4 eps and a moving avg of 1.
 - **Bottom-right (Avg Runtime in ns)**: Execution time per run; moving avg ~3367 ns (~3.3 µs), max ~12090 ns, shown as periodic spikes corresponding to occuring events (captured `execve()` syscalls).
