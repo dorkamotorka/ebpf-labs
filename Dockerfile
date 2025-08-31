@@ -42,6 +42,9 @@ deb http://ddebs.ubuntu.com %s-proposed main restricted universe multiverse\n" \
 RUN sudo apt-get install -y libbpf-dev && \
     sudo ln -sf /usr/include/$(uname -m)-linux-gnu/asm /usr/include/asm
 
+# Make sure we're root for the install
+USER root
+
 # Install Rust to /usr/local so it's visible to all users
 ENV RUSTUP_HOME=/usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo
