@@ -21,7 +21,7 @@ categories:
 - programming
 
 tagz:
-- ebpf
+- eBPF
 
 createdAt: 2025-08-30
 updatedAt: 2025-08-30

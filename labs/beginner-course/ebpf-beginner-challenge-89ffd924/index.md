@@ -11,7 +11,7 @@ categories:
 - programming
 
 tagz:
-- ebpf
+- eBPF
 
 difficulty: easy
 

@@ -4,7 +4,7 @@ kind: tutorial
 title: "Storing Data in eBPF: Your First eBPF Map"
 
 description: |
-  This tutorial builds on "From Zero to Your First eBPF Program" by introducing eBPF maps. You’ll learn how to store and update data inside the kernel, turning a simple eBPF Hello World program into one that tracks useful state. We’ll also briefly learn a few basics of bpftool, a handy CLI tool that will allow us to list and inspect our eBPF map.
+  In this tutorial, you’ll learn how to store and update data inside the kernel, turning a simple eBPF Hello World program into one that tracks useful state. We’ll also briefly learn a few basics of bpftool, a handy CLI tool that will allow us to list and inspect our eBPF map.
 
 playground:
   name: ebpf-playground-2bd77c1c
@@ -21,7 +21,7 @@ categories:
 - programming
 
 tagz:
-- ebpf
+- eBPF
 
 createdAt: 2025-08-23
 updatedAt: 2025-08-23

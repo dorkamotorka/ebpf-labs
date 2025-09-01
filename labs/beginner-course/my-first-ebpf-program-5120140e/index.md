@@ -21,7 +21,7 @@ categories:
 - linux
 
 tagz:
-- ebpf
+- eBPF
 
 createdAt: 2025-08-20
 updatedAt: 2025-08-22

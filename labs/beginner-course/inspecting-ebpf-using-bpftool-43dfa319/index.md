@@ -4,7 +4,7 @@ kind: tutorial
 title: Inspecting and Monitoring eBPF Applications
 
 description: |
-  This tutorial builds on "From Zero to Your First eBPF Program" and "Storing Data in eBPF: Your First eBPF Map" by introducing bpftool and bpftop. You’ll learn how to inspect eBPF programs and maps loaded into the kernel with bpftool, gaining deeper visibility into how your eBPF application runs. We’ll also explore bpftop, a top-like interface that lets you monitor eBPF program activity in real time.
+  In this tutorial, you’ll learn how to inspect eBPF programs and maps loaded into the kernel with bpftool, gaining deeper visibility into how your eBPF application runs. We’ll also explore bpftop, a top-like interface that lets you monitor eBPF program activity in real time.
 
 playground:
   name: ebpf-playground-2bd77c1c
@@ -21,7 +21,7 @@ categories:
 - programming
 
 tagz:
-- ebpf
+- eBPF
 
 createdAt: 2025-08-27
 updatedAt: 2025-08-27
@@ -151,7 +151,12 @@ sudo bpftool prog show id 15 --pretty
 - **id**: Unique ID of the eBPF program.
 - **type**: Type of the eBPF program.
 - **name**: Name of the eBPF program, which is the function name from the source code.
-- **tag**: [SHA (Secure Hashing Algorithm)](https://en.wikipedia.org/wiki/Secure_Hash_Algorithms) sum of the program’s instructions, which can be used as another identifier for the program. The program ID can change every time you load or unload the program, but the tag will remain the same.
+- **tag**: [SHA (Secure Hashing Algorithm)](https://en.wikipedia.org/wiki/Secure_Hash_Algorithms) sum of the program’s instructions, which can be used as another identifier for the program. The program ID can change every time you load or unload the program, but the tag will remain the same. In fact, you get the same output for all of the following commands
+```bash
+sudo bpftool prog show id 15
+sudo bpftool prog show name handle_execve_tp
+sudo bpftool prog show tag 8236b54ceef5a3ce
+```
 - **gpl_compatible**: Whether the program is defined with a GPL-compatible license, i.e., `char _license[] SEC("license") = "GPL";` in our kernel code.
 - **loaded_at**: [Unix timestamp](https://en.wikipedia.org/wiki/Unix_time) showing when the program was loaded.
 - **uid**: User that loaded the eBPF program. In this case, it is User ID 0 (which is root).
@@ -191,7 +196,7 @@ int handle_execve_tp(struct trace_event_raw_sys_enter * ctx):
 kind: info
 ---
 
-💡 If you want to make sense of the xlated output, you also need to understand [how eBPF uses its registers](https://www.kernel.org/doc/html/v5.17/bpf/instruction-set.html) to pass arguments, store values, and communicate results.
+💡 To understand eBPF bytecode, you need to be familiar with [how eBPF uses its registers](https://www.kernel.org/doc/html/v5.17/bpf/instruction-set.html) and with the [(unofficial) eBPF instructions set](https://github.com/iovisor/bpf-docs/blob/master/eBPF.md).
 ::
 
 Or even look at the Just-in-Time (JIT) compiled machine code produced for the same program:
@@ -310,9 +315,9 @@ But exactly the same, can be achieved using:
 sudo bpftool prog trace
 ```
 
-There’s **NO** `--prog` or `--id` flag in `bpftool prog trace` to only show logs from one particular eBPF program. So, whichever program calls `bpf_printk()`, the logs are all combined and interleaved in the output of this command.
+There’s **NO** option in `bpftool prog trace` to only show logs from one particular eBPF program. So, whichever program calls `bpf_printk()`, the logs are all combined and interleaved in the output of this command.
 
-Anyways, `bpf_printk()` should only be utilized during the development. Not only high-frequency events can overwhelm the trace buffer and the output of the mentioned commands is corrupted, but also they can cause significant performance overhead on your eBPF application.
+Anyways, `bpf_printk()` should only be utilized during the development. Not only high-frequency events can overwhelm the logs/trace buffer and the output of the mentioned commands is corrupted, but also they can cause significant performance overhead on your eBPF application.
 
 #### Generating the `vmlinux.h` File
 
