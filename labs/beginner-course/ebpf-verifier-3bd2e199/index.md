@@ -4,7 +4,7 @@ kind: tutorial
 title: "eBPF Verifier: Why the Kernel Can Safely Run eBPF Programs"
 
 description: |
-  In this tutorial, you’ll learn why it is safe to run eBPF code in the kernel, its advantages compared to kernel modules, and why the verifier is the most crucial component of eBPF.
+  In this tutorial, you’ll learn why it is safe to run eBPF code in the kernel, some of its advantages compared to kernel modules, and why the verifier is the most crucial component of eBPF.
 
 playground:
   name: ebpf-playground-2bd77c1c
@@ -39,7 +39,7 @@ When you start the tutorial, you’ll see a `Term 1` terminal and an `IDE` on th
 
 This tutorial serves as the continuation of [From Zero to Your First eBPF Program](https://labs.iximiuz.com/tutorials/my-first-ebpf-program-5120140e), [Storing Data in eBPF: Your First eBPF Map](https://labs.iximiuz.com/tutorials/ebpf-maps-tutorial-3efd4617) and [Inspecting and Monitoring eBPF Applications](https://labs.iximiuz.com/tutorials/inspecting-ebpf-using-bpftool-43dfa319), expanding on the introduced concepts.
 
-In this part, you’ll learn how the eBPF verifier ensures that eBPF code runs safely in the kernel.
+In this part, you’ll learn how the eBPF verifier ensures that eBPF code can run safely in the kernel.
 
 ::image-box
 ---
@@ -55,7 +55,7 @@ The code for this lab is located in the `ebpf-hello-world/lab4` directory. The p
 
 We’ve mentioned verification several times throughout these tutorials, so you already know that when you load an eBPF program into the kernel, this process ensures that the program is safe.
 
-This verification is done by the eBPF verifier. And by “safe”, we don’t mean cybersecurity-related security, but simply that the program won’t crash the system or cause a kernel panic.
+This verification is done by the [eBPF verifier](https://docs.ebpf.io/linux/concepts/verifier/). And by “safe”, we don’t mean cybersecurity-related security, but simply that the program won’t crash the system or cause a kernel panic.
 
 ::remark-box
 ---
@@ -65,9 +65,9 @@ kind: info
 💡 Safe execution is one of the biggest advantages of eBPF compared to traditional kernel modules. With kernel modules, even a small bug can crash the entire system, while the eBPF verifier prevents that from happening.
 ::
 
-It’s also important to note that the verifier is not a general-purpose static analyzer or debugger. For example, it won’t tell you whether your eBPF code is collecting the right data—it only ensures the program can safely execute inside the kernel.
+It’s also important to note that the verifier is not a general-purpose static analyzer or debugger. It won’t check whether your program is collecting the right data, or tell you how to structure your code. The verifier’s role is narrowly focused on ensuring memory safety, valid control flow, and correct use of kernel helpers.
 
-To do this, the verifier checks every possible execution path through your program and validates that each instruction is safe. This includes:
+To achieve this, the verifier checks every possible execution path through your program and validates that each instruction is safe. This includes:
 - **Validating Helper Functions**: Ensures only approved kernel helper functions are called, as different helper functions are valid for different BPF program types. (Remember the `sudo bpftool feature probe` output?)
 - **Validating Helper Function Arguments**: Ensures the arguments passed to helper functions are valid.
 - **Checking the License**: Ensures that if you are using an eBPF helper function that’s licensed under GPL, your program also has a GPL-compatible license.
@@ -80,23 +80,33 @@ To do this, the verifier checks every possible execution path through your progr
 - **Invalid Instructions**: Rejects any instruction that is not supported or not allowed in eBPF.
 - **Unreachable Instructions**: Flags and removes instructions that the program can never reach during execution.  
 
-In the next sections, we’ll look at a few of these checks with practical examples and tips for debugging them. For more details, we recommend [Learning eBPF, Chapter 6: The eBPF Verifier book](https://isovalent.com/books/learning-ebpf/).
+In the next sections, we’ll look at a few of these checks with practical examples and tips for debugging them. For more details about the eBPF verifier itself, we recommend [Learning eBPF, Chapter 6: The eBPF Verifier book](https://isovalent.com/books/learning-ebpf/).
 
 #### Checking the License
 
 When an eBPF program is loaded into the kernel, the verifier inspects which helper functions it uses. If any of those helpers are marked “GPL-only,” the program must declare a GPL-compatible license, as described in the licensing documentation.
 
-TODO: improve from here on
 ::details-box
 ---
 :summary: But how can you check if the helper function in use is GPL-licensed?
 ---
 
-TODO: While the latter two are non-GPL licenced, the bpf_probe_read_user_str() which is [GPL-only](https://codebrowser.dev/linux/linux/kernel/trace/bpf_trace.c.html#bpf_probe_read_user_str_proto).
+The most reliable way is to check the Linux kernel source. Specifically, look for the `<helper-function>_proto` definition. For example, the prototype for `bpf_probe_read_user_str()` is [`bpf_probe_read_user_str_proto`](https://codebrowser.dev/linux/linux/kernel/trace/bpf_trace.c.html#bpf_probe_read_user_str_proto), where the `.gpl_only` field indicates whether the helper is restricted to GPL-licensed programs.
+
+But as a rule of thumb, any eBPF program doing something meaningful is at some point going to utilize a GPL-licensed eBPF helper function.  
 ::
 
-If you look inside the `lab4/hello.c` file, you'll find `bpf_probe_read_user_str()`, `bpf_map_update_elem()` and `bpf_map_lookup_elem()`.
+::details-box
+---
+:summary: Does that mean I also have to license by user-space part of the eBPF application as GPL?
+---
 
+When it comes to user space, things are more flexible: your eBPF loader and supporting libraries do **NOT** need to be GPL-licensed, only the in-kernel eBPF program does. 
+
+This separation allows companies and projects to keep user space tooling under permissive licenses while still relying on GPL-only helpers in the kernel. For more details, see the [eBPF Licensing Guide](https://ebpf.io/blog/ebpf-licensing-guide/).
+::
+
+To show this on the example, look inside the `lab4/hello.c` file and you'll find `bpf_probe_read_user_str()`, `bpf_map_update_elem()` and `bpf_map_lookup_elem()` - but notice there’s no license definition anywhere in the code:
 ```c [hello.c]{6, 11, 16}
 SEC("tracepoint/syscalls/sys_enter_execve")
 int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
@@ -118,49 +128,29 @@ int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
 ...
 ```
 
-If you build and run this program, you're gonna see something like this:
+If you build and run this program, you’ll see the following verifier error:
 ```
 load program: invalid argument: cannot call GPL-restricted function from non-GPL compatible program
 ```
 
-Therefore, if you want to avoid the verification error in our code example, you need to uncomment the line of code that defines the license.
+This is expected: if you check the Linux kernel source, you’ll notice that among the helpers used, `bpf_probe_read_user_str()` is GPL-only.
 
+To resolve this, you need to declare your program’s license explicitly. Add the following line anywhere in your code (top or bottom doesn’t matter, as long as it’s present):
 ```c [hello.c]
 char _license[] SEC("license") = "GPL";
 ```
 
-::remark-box
+::details-box
 ---
-kind: info
+:summary: Does it always have to be GPL? What about dual-licensed options like Dual MIT/GPL?
 ---
 
-TODO: Does it need to be always equal to GPL? Ref: https://ebpf.io/blog/ebpf-licensing-guide/
+Strictly speaking, the eBPF license string does **NOT** always have to be plain "GPL". The Linux kernel considers several licenses to be GPL-compatible, including **GPL**, **GPL v2**, **Dual BSD/GPL**, **Dual MIT/GPL**, and **Dual MPL/GPL**, among others.
+
+Developers often choose a **dual license**, such as `"Dual BSD/GPL"` or `"Dual MIT/GPL"`, to provide flexibility: the code can be used under a permissive license (e.g., BSD or MIT) or under GPL—satisfying the kernel’s requirements while maximizing reuse.
+
+For full guidance on how licenses must be annotated and what qualifies as GPL-compatible within the kernel, check out the kernel’s [license-rules documentation](https://github.com/torvalds/linux/blob/master/Documentation/process/license-rules.rst).
 ::
-
-To see this output, we actually added, the following lines to our user space:
-```go [main.go]
-var objs helloObjects
-// For printing eBPF verifier logs
-// Ref: https://pkg.go.dev/github.com/cilium/ebpf#ProgramOptions
-opts := &ebpf.CollectionOptions{
-    Programs: ebpf.ProgramOptions{
-        LogLevel:     2,       // 1 = basic, 2 = verbose
-        LogSizeStart: 1 << 20, // 1MB buffer to avoid truncation
-    },
-}
-if err := loadHelloObjects(&objs, opts); err != nil {
-    // If verification fails, ebpf-go returns a VerifierError that includes the log.
-    // Print it for easier debugging
-    var ve *ebpf.VerifierError
-    if errors.As(err, &ve) {
-        log.Printf("Verifier error: %+v\n", ve)
-    }
-    log.Fatal("Loading eBPF objects:", err)
-}
-defer objs.Close()
-```
-
-TODO: what does that mean for user space
 
 #### Checking Pointers Before Dereferencing Them
 
@@ -176,6 +166,25 @@ kind: info
 
 For example, the verifier will reject unreachable instructions, but the compiler might optimize them away before the verifier sees them.
 ::
+
+Just before the end of the eBPF program, add:
+```c [hello.c]{10-13}
+    ...
+    __u64 *val = bpf_map_lookup_elem(&exec_count, &key);
+    if (val) {
+        *val += 1;
+    } else {
+        __u64 init = 1;
+        bpf_map_update_elem(&exec_count, &key, &init, BPF_NOEXIST);
+    }
+
+    // Step 2: Print `key.path` and `*val`
+    if (val) {
+        bpf_printk("execve: %s (count: %llu)\n", key.path, *val);
+    }
+    return 0;
+}
+```
 
 #### Running to Completion
 
