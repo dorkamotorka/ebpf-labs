@@ -33,15 +33,15 @@ tasks:
   verify_program:
     run: |
       # first check
-      [ $(sudo bpftool prog show | grep -c "name handle_execve_tp") -lt 1 ] && echo "No running eBPF programs" && exit 1
+      [ $(sudo bpftool prog show | grep -c "name challenge") -lt 1 ] && echo "No running eBPF programs" && exit 1
 
       sleep 2  # making sure it's stable enough
 
       # second check
-      [ $(sudo bpftool prog show | grep -c "name handle_execve_tp") -lt 1 ] && echo "No running eBPF programs" && exit 1
+      [ $(sudo bpftool prog show | grep -c "name challenge") -lt 1 ] && echo "No running eBPF programs" && exit 1
 
       # Get its ID for the next step
-      sudo bpftool prog show | awk '/name handle_execve_tp/ {print $1}' | sed 's/://'
+      sudo bpftool prog show | awk '/name challenge/ {print $1}' | sed 's/://'
 
   verify_map:
     run: |
@@ -55,6 +55,11 @@ tasks:
 
       # Get its ID for the next step
       sudo bpftool map show | awk '/name exec_count/ {print $1}' | sed 's/://'
+
+  verify_user:
+    run: |
+      # Extract its UID
+      sudo bpftool prog show name challenge --json | jq -r '.uid'
 
   verify_program_id:
     needs:
@@ -70,6 +75,19 @@ tasks:
 
       if [[ "${PROGRAM_ID}" != "${PROVIDED_ID}"* ]]; then
         echo "Program ID is not correct"
+        exit 1
+      fi
+  
+  verify_answer:
+    run: |
+      ANSWER="$(cat /tmp/answer.txt)"
+      if [ "${ANSWER}" == "" ]; then
+        echo "Provided answer is empty"
+        exit 1
+      fi
+
+      if [[ "no" != "${ANSWER}"* ]]; then
+        echo "Answer is not correct"
         exit 1
       fi
 
@@ -89,9 +107,39 @@ tasks:
         echo "Map ID is not correct"
         exit 1
       fi
+
+  verify_map_flag:
+    run: |
+      PROVIDED_FLAG="$(cat /tmp/map-flag.txt)"
+      if [ "${PROVIDED_FLAG}" == "" ]; then
+        echo "Provided flag is empty"
+        exit 1
+      fi
+
+      if [[ "BPF_NOEXIST" != "${PROVIDED_FLAG}"* ]]; then
+        echo "Provided flag is not correct"
+        exit 1
+      fi
+
+  verify_user_id:
+    needs:
+      - verify_user
+    env:
+      - USER_ID=x(.needs.verify_user.stdout)
+    run: |
+      PROVIDED_ID="$(cat /tmp/user-id.txt)"
+      if [ "${PROVIDED_ID}" == "" ]; then
+        echo "Provided user ID is empty"
+        exit 1
+      fi
+
+      if [[ "${USER_ID}" != "${PROVIDED_ID}"* ]]; then
+        echo "User ID is not correct"
+        exit 1
+      fi
 ---
 
-In this challenge, you will need to perform the most fundamental eBPF related operation - start a program.
+In this challenge, you’ll tackle the most fundamental eBPF tasks. We’ve taught you the basics — now it’s your turn to put them into practice.
 
 ::image-box
 ---
@@ -100,9 +148,8 @@ In this challenge, you will need to perform the most fundamental eBPF related op
 :max-width: 600px
 ---
 ::
-
-You need to run the program that was build during the eBPF tutorials for beginners, because to complete this challenge you will also need to inspect the running program and answer a few questions about it.
-It can be found under `ebpf-hello-world/solution` directory.
+ 
+Before you get going, build and run the eBPF application. You’ll find it in the `ebpf-hello-world/challenge` directory — and yes, we’ve slipped in a verifier error on purpose just to keep you on your toes. Your mission - figure out why it fails and fix it.
 
 ::simple-task
 ---
@@ -133,13 +180,14 @@ Yay! The eBPF map is loaded 🎉
 :summary: Hint 1
 ---
 
-It's an easy one - generate the Go source file (`hello_bpf.go`) that embeds the eBPF object, build the final eBPF application binary and run it.
+It's an easy one — think about the **licensing** of eBPF programs.
 ::
 
+Now that your program is running, let’s inspect it.
 
-Now, when you have a running program, let's try to understand what it actually is.
+Keep it running, then open a second `Term 2` terminal on the right (click the `+` at the top).
 
-To keep track of eBPF program, each one is assigned a unique ID. Can you find the ID of the program that you've just started?
+Every eBPF program gets a unique ID for tracking. Can you find the ID of the program you just started?
 
 ::user-input-task
 ---
@@ -157,13 +205,55 @@ Yay! You've found the running program ID 🎉
 
 ::hint-box
 ---
-:summary: Hint 2
+:summary: Hint 1
 ---
 
 `sudo bpftool --help` is your friend 😉
 ::
 
-Can you find the ID of the map that was defined in the program and loaded?
+Sometimes, knowing which user loaded an eBPF program is useful for accountability and security.
+
+Let's find the User Identifier (UID) that loaded the eBPF program of type `tracepoint` with name `challenge`.
+
+::user-input-task
+---
+:tasks: tasks
+:name: verify_user_id
+:validateRegex: ^[0-9]+$
+:destination: /tmp/user-id.txt
+---
+#active
+Waiting for the UID to be identified...
+
+#completed
+Well, that wasn’t too tricky — it was you! The `challenge` program is the very one you built and ran. But since you used `sudo`, it was technically loaded by `root`. But we’ll let you take the credit this time. 😉
+::
+
+We also learned that not all eBPF programs support every eBPF helper function. Can you find whether an eBPF program of type `tracepoint` support the `bpf_probe_write_user()` helper? (Answer with `yes` or `no`)
+
+::user-input-task
+---
+:tasks: tasks
+:name: verify_answer
+:validateRegex: ^[a-z]+$
+:destination: /tmp/answer.txt
+---
+#active
+Waiting for the answer...
+
+#completed
+Yay! You are correct 🎉
+::
+
+::hint-box
+---
+:summary: Hint 1
+---
+
+This one is up to you — either the eBPF documentation or `sudo bpftool --help` will point you in the right direction 😉
+::
+
+What about eBPF maps - can you find the ID of the `exec_count` eBPF map that was defined and loaded in your eBPF program?
 
 ::user-input-task
 ---
@@ -181,8 +271,31 @@ Yay! You've found the map ID 🎉
 
 ::hint-box
 ---
-:summary: Hint 2
+:summary: Hint 1
 ---
 
 `sudo bpftool --help` is your friend 😉
+::
+
+Can you recall what eBPF map flag should one provide to the `bpf_map_update_elem()` that adds the entry only if the key doesn't exist yet.
+
+::user-input-task
+---
+:tasks: tasks
+:name: verify_map_flag
+:validateRegex: ^[A-Z_]+$
+:destination: /tmp/map-flag.txt
+---
+#active
+Waiting for the eBPF map flag to be identified...
+
+#completed
+Yay! You've found the correct flag 🎉
+::
+
+::hint-box
+---
+:summary: Hint 1
+---
+Feel free to check the eBPF docs — you don’t need to know everything by heart, just how to find it 😉
 ::
