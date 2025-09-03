@@ -59,7 +59,7 @@ Before we can use an eBPF map in our kernel program, we need to define it. Navig
 
 Inside, add the following code lines and eBPF map definition (under Step 1):
 
-```c
+```c [hello.c]
 #define MAX_PATH 256
 
 struct path_key {
@@ -107,7 +107,7 @@ func main() {
 
 Technically, this eBPF map could now be updated (store/read/delete key/value pairs) from any eBPF kernel or user space program, but in our case we just update it from our eBPF kernel function. And we do so by modifying our kernel program as such (under Step 2):
 
-```c
+```c [hello.c]
 SEC("tracepoint/syscalls/sys_enter_execve")
 int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
     // The eBPF program reads the first argument of the input context `struct trace_event_raw_sys_enter`, whose 
@@ -300,7 +300,7 @@ If along the you encountered any issues, look inside the `ebpf-hello-world/lab3`
 
 Not to get confused, there is a legacy way of defining maps using the `struct bpf_map_def type`.
 
-```c
+```c [hello.c]
 struct bpf_map_def exec_count = {
     .type = BPF_MAP_TYPE_HASH,
     .key_size = sizeof(struct path_key),

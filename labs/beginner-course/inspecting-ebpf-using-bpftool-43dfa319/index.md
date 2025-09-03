@@ -340,7 +340,7 @@ kind: info
 
 For other cases, the header should be generated at build time, either through the `Makefile` or a `//go:generate` directive in user space program.
 
-```go
+```go [main.go]
 //go:generate sh -c "bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h"
 ```
 ::
