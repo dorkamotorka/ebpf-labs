@@ -229,7 +229,15 @@ Waiting for the UID to be identified...
 Well, that wasn’t too tricky — it was you! The `challenge` program is the very one you built and ran. But since you used `sudo`, it was technically loaded by `root`. But we’ll let you take the credit this time. 😉
 ::
 
-We also learned that not all eBPF programs support every eBPF helper function. Can you find whether an eBPF program of type `tracepoint` support the `bpf_probe_write_user()` helper? (Answer with `yes` or `no`)
+We also learned that not all eBPF programs support every eBPF helper function. Can you find whether an eBPF program of type `tracepoint` support the `bpf_override_return()` helper? (Answer with `yes` or `no`)
+
+::remark-box
+---
+kind: info
+---
+
+💡 `bpf_override_return()` lets an eBPF program forcibly change the return value of a probed kernel function.
+::
 
 ::user-input-task
 ---
