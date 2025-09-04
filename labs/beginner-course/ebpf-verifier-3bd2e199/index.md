@@ -62,7 +62,7 @@ This verification is done by the [eBPF verifier](https://docs.ebpf.io/linux/conc
 kind: info
 ---
 
-💡 Safe execution is one of the biggest advantages of eBPF compared to traditional kernel modules. With kernel modules, even a small bug can crash the entire system, while the eBPF verifier prevents that from happening.
+💡 Safe execution is one of the biggest advantages of eBPF programs compared to traditional kernel modules.
 ::
 
 To achieve this, the verifier checks every possible execution path through your program and validates that each instruction is safe. This includes:
@@ -71,7 +71,7 @@ To achieve this, the verifier checks every possible execution path through your 
 - **Checking the License**: Ensures that if you are using an eBPF helper function that’s licensed under GPL, your program also has a GPL-compatible license.
 - **Checking Memory Access**: Ensures the program only reads and writes to memory it is allowed to access. 
 - **Checking Pointers Before Dereferencing Them**: Ensures pointers in code are safe and not null or out of bounds before use.
-- **Accessing Context**: Ensures that the program accesses only the fields in the context structure it is allowed to.
+- **Accessing Context**: Ensures that the program accesses only the fields in the input context structure it is allowed to.
 - **Running to Completion**: Ensures the program will eventually finish instead of running forever.
 - **Loops**: Ensures that loops are bounded and cannot cause infinite execution.
 - **Checking the Return Code**: Ensures the program returns a valid value for its type of hook.
@@ -82,29 +82,29 @@ In the next sections, we’ll look at a few of these checks with practical examp
 
 #### Checking the License
 
-When an eBPF program is loaded into the kernel, the verifier inspects which helper functions it uses. If any of those helpers are marked “GPL-only,” the program must declare a GPL-compatible license, as described in the licensing documentation.
+When an eBPF program is loaded into the kernel, the verifier inspects which helper functions it uses. If any of those helpers are marked “GPL-only,” the program must declare a GPL-compatible license.
 
 ::details-box
 ---
-:summary: But how can you check if the helper function in use is GPL-licensed?
+:summary: But how can one check if the helper function in use is GPL-licensed?
 ---
 
-The most reliable way is to inspect the Linux kernel source and look for the `<helper-function>_proto` definition. 
+It’s not the most convenient approach, but you can determine this for each helper function by checking the Linux kernel source for the corresponding `<helper-function>_proto` struct definition.
 
 For example, the prototype for `bpf_probe_read_user_str()` is [`bpf_probe_read_user_str_proto`](https://codebrowser.dev/linux/linux/kernel/trace/bpf_trace.c.html#bpf_probe_read_user_str_proto), where the `.gpl_only` boolean field indicates that the helper is restricted to GPL-licensed programs.
 ::
 
 ::details-box
 ---
-:summary: Does that mean I also have to license by user-space part of the eBPF application as GPL?
+:summary: Does that mean one also has to license the user-space part of the eBPF application as GPL?
 ---
 
-When it comes to user space, your eBPF loader code and supporting libraries do **NOT** need to be GPL-licensed, only the in-kernel eBPF program does. 
+Not really. When it comes to user space, your eBPF loader code and supporting libraries do **NOT** need to be GPL-licensed, only the in-kernel eBPF program does. 
 
-This separation allows companies and projects to keep user space tooling under permissive licenses while still relying on GPL-only helpers in the kernel. For more details, see the [eBPF Licensing Guide](https://ebpf.io/blog/ebpf-licensing-guide/).
+This separation allows companies and projects to keep user space tooling under permissive licenses while still running GPL-licensed code in the kernel. For more details, see the [eBPF Licensing Guide](https://ebpf.io/blog/ebpf-licensing-guide/).
 ::
 
-To show this on the example, look inside the `ebpf-hello-world/lab4/hello.c` file and you'll find `bpf_probe_read_user_str()`, `bpf_map_update_elem()` and `bpf_map_lookup_elem()` - but notice there’s no license definition anywhere in the code:
+To demonstrate this, open the `ebpf-hello-world/lab4/hello.c` file. You’ll find calls to helpers such as `bpf_probe_read_user_str()`, `bpf_map_update_elem()` and `bpf_map_lookup_elem()` - but notice there’s no license definition anywhere in the code:
 ```c [hello.c]{6, 11, 16}
 SEC("tracepoint/syscalls/sys_enter_execve")
 int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
@@ -128,7 +128,7 @@ int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
 
 If you build and run this program, you’ll see the following verifier error:
 ```
-load program: invalid argument: cannot call GPL-restricted function from non-GPL compatible program
+cannot call GPL-restricted function from non-GPL compatible program
 ```
 
 This is expected: like mentioned above or if you check the Linux kernel source, you’ll notice that among these helpers, `bpf_probe_read_user_str()` is GPL-only.
@@ -148,14 +148,16 @@ The Linux kernel accepts several options, including **GPL**, **GPL v2**, **Dual 
 
 Many projects actually choose a **dual license** in order to:
 - satisfy the eBPF verifier in case of GPL-ed helper functions
-- give other projects flexibility to integrate eBPF code into non-GPL projects without being forced to adopt GPL for their entire codebase
+- give other projects flexibility to integrate/reuse parts of the eBPF code without being forced to adopt GPL for their entire codebase
 
 For full details on accepted annotations, see the kernel’s [license-rules documentation](https://github.com/torvalds/linux/blob/master/Documentation/process/license-rules.rst).
 ::
 
+Re-run the program and see it works as expected.
+
 #### Checking Pointers Before Dereferencing Them
 
-Let’s say you want to debug whether your program is running correctly by printing which binary paths are executed and stored in the eBPF map.
+Let’s say you want to validate or debug your program by printing which binary paths are executed and stored in the eBPF map.
 
 To do this, you might try adding the following lines just before the end of your eBPF program:
 ```c [hello.c]{10-11}
@@ -175,10 +177,16 @@ To do this, you might try adding the following lines just before the end of your
 }
 ```
 
-However, this won’t really work. If you try to run the program, you’ll hit a verifier error like:
+However, this won’t really work. If you try to run the program, you’ll hit a verifier error such as:
 ```
-load program: invalid argument: last insn is not an exit or jmp (2 line(s) omitted)
+last insn is not an exit or jmp (2 line(s) omitted)
 ```
+
+At first glance, this error is a bit misleading. Technically, it’s the verifier’s way of saying *“your function doesn’t always end with a return instruction.”* 
+
+But since we clearly have a `return 0;` in place, it feels like the verifier is just trolling us 😅.
+
+And it’s also pretty clear the error only showed up after we added the new line. That means something about it must be wrong.
 
 We could now disassemble the `hello_bpf.o` kernel object (built with `go generate` command) to track down the error, but that would be another tutorial on its own. In this case, the issue is actually visible directly in our code.
 
@@ -205,11 +213,26 @@ The problem is that we never verify whether `*val` points to valid memory. The `
 
 To summarize this, always check pointers before dereferencing them.
 
-#### Running to Completion
+#### Running to Completion and Complexity Limit
 
-TODO
+Another important verifier check is to make sure the program runs to completion in a relatively short amount of time. Otherwise, there is a risk that it might consume resources indefinitely, possibly containing infinite loops that could hang the kernel completely.
 
-Limit is hardcoded to the kernel: https://elixir.bootlin.com/linux/v5.19.17/source/include/uapi/linux/bpf_common.h#L54 (TODO: this is for 4096)
+Just imagine our eBPF program attached to the `execve()` syscall running for too long. It could cause massive delays in the termination of the `execve` syscall and consequently have a significant impact on the system.
+
+So, when eBPF was introduced, there were two parameters that limited its size:
+- **The maximum number of eBPF bytecode instructions for a program:** 4096  
+- **The complexity limit:** 32768  
+
+You may think of the second number as the total number of instructions accumulated over all execution paths. So if a program had many logical branches or loops and required too much effort from the verifier, it would fail to load, even if it had fewer than 4096 instructions.
+
+To allow for more complex eBPF programs, both limits were raised in a [commit in Linux 5.2](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=c04c0d2b968ac45d6ef020316808ef6c82325a82) to 1 million instructions.
+
+If your program is too complex and classified as hogging the system for too long, you'll end up seeing the following error:
+```
+BPF program is too large. Processed 1000001 insn
+```
+
+But in reality, eBPF programs tend to be small, and the one-million-state complexity limit is big enough that most use cases will never hit it. Only some advanced projects like [Cilium](https://github.com/cilium/cilium) may be facing it, and they need to regularly adjust their code to satisfy the verifier's requirements.
 
 ___________________________________
 
