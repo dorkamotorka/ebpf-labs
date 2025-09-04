@@ -30,6 +30,11 @@ tasks:
     run: |
       git clone https://github.com/dorkamotorka/ebpf-hello-world.git /home/laborant/ebpf-hello-world
 
+  verify_user:
+    run: |
+      # Extract its UID
+      sudo bpftool prog show name challenge --json | jq -r '.uid'
+
   verify_program:
     run: |
       # first check
@@ -41,31 +46,25 @@ tasks:
       [ $(sudo bpftool prog show | grep -c "name challenge") -lt 1 ] && echo "No running eBPF programs" && exit 1
 
       # Get its ID for the next step
-      sudo bpftool prog show | awk '/name challenge/ {print $1}' | sed 's/://'
+      sudo bpftool prog show | awk '/name challenge/ {print $1}' | sed 's/://' || echo ""
 
-  verify_map:
-    run: |
-      # first check
-      [ $(sudo bpftool map show | grep -c "name exec_count") -lt 1 ] && echo "No loaded eBPF maps" && exit 1
-
-      sleep 2  # making sure it's stable enough
-
-      # second check
-      [ $(sudo bpftool map show | grep -c "name exec_count") -lt 1 ] && echo "No loaded eBPF maps" && exit 1
-
-      # Get its ID for the next step
-      sudo bpftool map show | awk '/name exec_count/ {print $1}' | sed 's/://'
-
-  verify_user:
-    run: |
-      # Extract its UID
-      sudo bpftool prog show name challenge --json | jq -r '.uid'
 
   verify_program_id:
     needs:
       - verify_program
     env:
       - PROGRAM_ID=x(.needs.verify_program.stdout)
+    failcheck: |
+      if ! sudo bpftool prog show name challenge &>/dev/null; then
+        echo "The eBPF program is no longer loaded. Did it unload or fail to attach?"
+        exit 1
+      fi
+    hintcheck: |
+      if ! sudo bpftool prog show name challenge &>/dev/null; then
+        echo "To understand what happened, try running 'sudo bpftool prog list'."
+        echo "It'll show all running eBPF programs."
+        exit 0
+      fi
     run: |
       PROVIDED_ID="$(cat /tmp/program-id.txt)"
       if [ "${PROVIDED_ID}" == "" ]; then
@@ -91,11 +90,35 @@ tasks:
         exit 1
       fi
 
+  verify_map:
+    run: |
+      # first check
+      [ $(sudo bpftool map show | grep -c "name exec_count") -lt 1 ] && echo "No loaded eBPF maps" && exit 1
+
+      sleep 2  # making sure it's stable enough
+
+      # second check
+      [ $(sudo bpftool map show | grep -c "name exec_count") -lt 1 ] && echo "No loaded eBPF maps" && exit 1
+
+      # Get its ID for the next step
+      sudo bpftool map show | awk '/name exec_count/ {print $1}' | sed 's/://' || echo ""
+
   verify_map_id:
     needs:
       - verify_map
     env:
       - MAP_ID=x(.needs.verify_map.stdout)
+    failcheck: |
+      if ! sudo bpftool map show name exec_count &>/dev/null; then
+        echo "The eBPF map is no longer loaded. Did it unload?"
+        exit 1
+      fi
+    hintcheck: |
+      if ! sudo bpftool map show name exec_count &>/dev/null; then
+        echo "To understand what happened, try running 'sudo bpftool map list'."
+        echo "It'll show all loaded eBPF maps."
+        exit 0
+      fi
     run: |
       PROVIDED_ID="$(cat /tmp/map-id.txt)"
       if [ "${PROVIDED_ID}" == "" ]; then
@@ -126,6 +149,17 @@ tasks:
       - verify_user
     env:
       - USER_ID=x(.needs.verify_user.stdout)
+    failcheck: |
+      if ! sudo bpftool prog show name challenge &>/dev/null; then
+        echo "The eBPF program is no longer loaded. Did it unload or fail to attach?"
+        exit 1
+      fi
+    hintcheck: |
+      if ! sudo bpftool prog show name challenge &>/dev/null; then
+        echo "To understand what happened, try running 'sudo bpftool prog list'."
+        echo "It'll show all running eBPF programs."
+        exit 0
+      fi
     run: |
       PROVIDED_ID="$(cat /tmp/user-id.txt)"
       if [ "${PROVIDED_ID}" == "" ]; then
@@ -180,7 +214,7 @@ Yay! The eBPF map is loaded 🎉
 :summary: Hint 1
 ---
 
-It's an easy one — think about the **licensing** of eBPF programs.
+It’s an easy one — try building and running the "broken" program and you’ll understand.
 ::
 
 Now that your program is running, let’s inspect it.
