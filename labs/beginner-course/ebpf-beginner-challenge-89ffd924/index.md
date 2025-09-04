@@ -4,7 +4,7 @@ kind: challenge
 title: eBPF Challenge for Beginners
 
 description: |
-  TODO
+  In this challenge, you’ll debug and fix a deliberately “broken” eBPF program, then prove it’s running by identifying its program and map IDs. Along the way, you’ll explore `bpftool`, check which helpers are supported, and dig into details like the UID of the loader. Finally, you’ll test your knowledge of eBPF maps by recalling the flag that only inserts a key if it doesn’t already exist.
 
 categories:
 - linux
