@@ -183,7 +183,7 @@ In this challenge, you’ll tackle the most fundamental eBPF tasks. We’ve taug
 ---
 ::
  
-Before you get going, build and run the eBPF application. You’ll find it in the `ebpf-hello-world/challenge` directory — and yes, we’ve slipped in a verifier error on purpose just to keep you on your toes. Your mission - figure out why it fails and fix it.
+**Before you get going, build and run the eBPF application.** You’ll find it in the `ebpf-hello-world/challenge` directory — and yes, **we’ve slipped in a verifier error on purpose** just to keep you on your toes. Your mission - figure out why it fails and fix it.
 
 ::simple-task
 ---
@@ -221,7 +221,7 @@ Now that your program is running, let’s inspect it.
 
 Keep it running, then open a second `Term 2` terminal on the right (click the `+` at the top).
 
-Every eBPF program gets a unique ID for tracking. Can you find the ID of the program you just started?
+**Every eBPF program gets a unique ID for tracking. Can you find the ID of the program you just started?**
 
 ::user-input-task
 ---
@@ -234,7 +234,7 @@ Every eBPF program gets a unique ID for tracking. Can you find the ID of the pro
 Waiting for the program ID to be identified...
 
 #completed
-Yay! You've found the running program ID 🎉
+Yay! You’ve found the running program ID and did you know `bpftool prog` alone already shows it — no need for `list` 😉
 ::
 
 ::hint-box
@@ -247,7 +247,7 @@ Yay! You've found the running program ID 🎉
 
 Sometimes, knowing which user loaded an eBPF program is useful for accountability and security.
 
-Let's find the User Identifier (UID) that loaded the eBPF program of type `tracepoint` with name `challenge`.
+**Find the User Identifier (UID) that loaded the eBPF program of type `tracepoint` with name `challenge`.**
 
 ::user-input-task
 ---
@@ -263,15 +263,9 @@ Waiting for the UID to be identified...
 Well, that wasn’t too tricky — it was you! The `challenge` program is the very one you built and ran. But since you used `sudo`, it was technically loaded by `root`. But we’ll let you take the credit this time. 😉
 ::
 
-We also learned that not all eBPF programs support every eBPF helper function. Can you find whether an eBPF program of type `tracepoint` support the `bpf_override_return()` helper? (Answer with `yes` or `no`)
+We also learned that not all eBPF programs support every eBPF helper function. 
 
-::remark-box
----
-kind: info
----
-
-💡 `bpf_override_return()` lets an eBPF program forcibly change the return value of a probed kernel function.
-::
+**Can you find whether an eBPF program of type `tracepoint` support the `bpf_override_return()` helper? (Answer with `yes` or `no`)**
 
 ::user-input-task
 ---
@@ -281,10 +275,11 @@ kind: info
 :destination: /tmp/answer.txt
 ---
 #active
-Waiting for the answer...
+Waiting for your answer...
 
 #completed
-Yay! You are correct 🎉
+Nice! You got it 🎉
+For a bit more context, `bpf_override_return()` allows an eBPF program to override the return value of a probed kernel function. In practice, this means you can block certain binaries from executing — pretty cool, right?
 ::
 
 ::hint-box
@@ -295,7 +290,7 @@ Yay! You are correct 🎉
 This one is up to you — either the eBPF documentation or `sudo bpftool --help` will point you in the right direction 😉
 ::
 
-What about eBPF maps - can you find the ID of the `exec_count` eBPF map that was defined and loaded in your eBPF program?
+**What about eBPF maps - can you find the ID of the `exec_count` eBPF map that was defined and loaded in your eBPF program?**
 
 ::user-input-task
 ---
@@ -308,7 +303,7 @@ What about eBPF maps - can you find the ID of the `exec_count` eBPF map that was
 Waiting for the map ID to be identified...
 
 #completed
-Yay! You've found the map ID 🎉
+Yay! You’ve found the map ID and just like with `bpftool prog`, a simple `bpftool map` works too 🤪
 ::
 
 ::hint-box
@@ -319,7 +314,9 @@ Yay! You've found the map ID 🎉
 `sudo bpftool --help` is your friend 😉
 ::
 
-Can you recall what eBPF map flag should one provide to the `bpf_map_update_elem()` that adds the entry only if the key doesn't exist yet.
+And for the last, slightly harder question before I let you go...
+
+**Can you recall what eBPF map flag should one provide to the `bpf_map_update_elem()` that adds the entry only if the key doesn't exist yet.**
 
 ::user-input-task
 ---
@@ -332,7 +329,7 @@ Can you recall what eBPF map flag should one provide to the `bpf_map_update_elem
 Waiting for the eBPF map flag to be identified...
 
 #completed
-Yay! You've found the correct flag 🎉
+Oh yeah — that one was tough! But you nailed it and found the correct flag 🎉
 ::
 
 ::hint-box
