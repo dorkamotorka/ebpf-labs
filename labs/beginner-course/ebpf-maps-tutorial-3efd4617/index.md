@@ -112,6 +112,7 @@ SEC("tracepoint/syscalls/sys_enter_execve")
 int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
     // The eBPF program reads the first argument of the input context `struct trace_event_raw_sys_enter`, whose 
     // values/parameters align with the execve() system call: https://man7.org/linux/man-pages/man2/execve.2.html
+    // You can also view this allignment using `sudo cat /sys/kernel/debug/tracing/events/syscalls/sys_enter_execve/format`
     // * The first argument `ctx->args[0]` is `const char *pathname` -> either a binary executable, or 
     //   a script starting with a line of the form `#!interpreter [optional-arg]` (e.g. your bash scripts)
     const char *filename = (const char *)ctx->args[0];
