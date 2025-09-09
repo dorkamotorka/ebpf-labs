@@ -14,7 +14,7 @@ tasks:
     init: true
     user: laborant
     run: |
-      git clone https://github.com/dorkamotorka/ebpf-hello-world.git /home/laborant/ebpf-hello-world
+      git clone https://github.com/dorkamotorka/ebpf-labs-advanced.git /home/laborant/ebpf-labs-advanced
 
 categories:
 - linux
@@ -32,9 +32,11 @@ cover: __static__/cover.png
 
 It is safe to say that almost all eBPF programs can extract and send kernel event data to user space applications. 
 
-However, eBPF tracing program types like kprobes, fprobes, and tracepoints are often preferred because they hook onto kernel events with access to rich, actionable data for tasks like performance monitoring or syscall argument tracing. 
+However, eBPF tracing program types like kprobes, fprobes, and tracepoints are often preferred because they hook onto points or functions in kernel with access to rich, actionable data for tasks like performance monitoring or syscall argument tracing. 
 
 But their overlapping functionality can make choosing the right one confusing.
+
+In this tutorial, we’ll implement several eBPF tracing programs that capture `execve` syscall events and compare their strengths and trade-offs.
 
 TODO: image
 
@@ -44,45 +46,111 @@ Tracepoints are predefined hook points in the Linux kernel, and eBPF programs ca
 
 For example, the `sys_enter_execve` tracepoint captures the entry of the execve system call, providing information about the program being executed and its arguments, making it a valuable in things like auditing security events, or analyzing Linux user activity.
 
+In the kernel this tracepoint is defined in [`linux/include/trace/events/syscalls.h`](https://codebrowser.dev/linux/linux/include/trace/events/syscalls.h.html#18) using the `TRACE_EVENT_SYSCALL` macro.
+
+
+::details-box
+---
+:summary: More information on TRACE_EVENT_SYSCALL macro
+---
+
+Actually, `TRACE_EVENT` is the generic macro for defining custom tracepoints in the kernel, while `TRACE_EVENT_SYSCALL` is a specialized variant for syscalls. 
+
+Instead of writing out each syscall tracepoint manually, it uses the kernel’s syscall definitions (from the syscall tables) to automatically create matching `sys_enter_<name>` and `sys_exit_<name>` tracepoints, such as `sys_enter_execve`.
+::
+
 You can find all events that eBPF tracepoints can hook onto, using:
 
 ```bash
 sudo cat /sys/kernel/debug/tracing/available_events
 ```
-TODO: add output
+```
+drm:drm_vblank_event
+drm:drm_vblank_event_queued
+drm:drm_vblank_event_delivered
+...
+syscalls:sys_exit_execveat
+syscalls:sys_enter_execveat
+syscalls:sys_exit_execve
+syscalls:sys_enter_execve # <- here is our tracepoint
+syscalls:sys_exit_pipe
+...
+```
 
 The output format is in the form `<category>:<name>`.
 
-You can view the input arguments for a tracepoint by checking the contents of `/sys/kernel/debug/tracing/events/<category>/<name>/format`.
+Using the `category` and the `name`, you can then view the input arguments for a tracepoint by checking the contents of `/sys/kernel/debug/tracing/events/<category>/<name>/format`.
 
 ```bash
 sudo cat /sys/kernel/debug/tracing/events/syscalls/sys_enter_execve/format
 ```
-TODO: add output
+```
+name: sys_enter_execve
+ID: 660
+format:
+        field:unsigned short common_type;           offset:0; size:2; signed:0;
+        field:unsigned char common_flags;           offset:2; size:1; signed:0;
+        field:unsigned char common_preempt_count;   offset:3; size:1; signed:0;
+        field:int           common_pid;             offset:4; size:4; signed:1;
+
+        field:int        __syscall_nr;              offset:8;  size:4; signed:1;
+        field:const char * filename;                offset:16; size:8; signed:0;
+        field:const char *const * argv;             offset:24; size:8; signed:0;
+        field:const char *const * envp;             offset:32; size:8; signed:0;
+
+print fmt: "filename: 0x%08lx, argv: 0x%08lx, envp: 0x%08lx", ((unsigned long)(REC->filename)), ((unsigned long)(REC->argv)), ((unsigned long)(REC->envp))
+```
 
 ::remark-box
 ---
 kind: info
 ---
 
-💡 The first four arguments, are not accessible by the eBPF code. This is a choice that dates back to the original inclusion of this code. See explaination in [commit 98b5c2c65c29](https://github.com/torvalds/linux/commit/98b5c2c65c2951772a8fc661f50d675e450e8bce).
+💡 The first four arguments, are actually not accessible by the eBPF code. This is a choice that dates back to the original inclusion of this code. See explaination in [commit 98b5c2c65c29](https://github.com/torvalds/linux/commit/98b5c2c65c2951772a8fc661f50d675e450e8bce).
 ::
 
-But other fields can generally be accessed using our eBPF program like showcased at the bottom in the print fmt line.
+But other fields can generally be accessed using our eBPF program like showcased at the bottom in the `print fmt` line.
 
 Using that we can write our eBPF Tracepoint program.
 
-TODO: add code
+```c [trace.c]
+...
+struct trace_sys_enter_execve {                                             
+    short common_type;                                                      
+    char common_flags;                                                      
+    char common_preempt_count;                                              
+    int common_pid;                                                         
+                                                                            
+    s32 syscall_nr;        // offset=8,  size=4                             
+    u32 pad;               // offset=12, size=4 (pad)                       
+    const u8 *filename;    // offset=16, size=8                             
+    const u8 *const *argv; // offset=24, size=8                             
+    const u8 *const *envp; // offset=32, size=8                             
+};                                                                          
+                                                                            
+SEC("tracepoint/syscalls/sys_enter_execve")                                 
+int handle_execve_tp_non_core(struct trace_sys_enter_execve *ctx) {         
+    char *filename_ptr = (char *)BPF_PROBE_READ(ctx, filename);             
+                                                                            
+    u8 buf[ARGSIZE];                                                        
+    bpf_probe_read_user_str(buf, sizeof(buf), filename_ptr);                
+                                                                             
+    bpf_printk("Tracepoint triggered for execve syscall with parameter filename: %s\n", buf);
+    return 0;                                                               
+} 
+```
 
-💡 SEC("tp/xx/yy") and SEC("tracepoint/xx/yy") are equivalent, and you can use either one according to personal preference.
+::remark-box
+---
+kind: info
+---
+
+💡 `SEC("tp/xx/yy")` and `SEC("tracepoint/xx/yy")` are equivalent, and you can use either one according to personal preference.
+::
 
 But there are two downsides to this:
-
-Tracepoints only exists in places where kernel devs have put them. If you need to trace something that isn't supported you need another technique.
-
-Additionally, you need to make sure the tracepoint you are attaching to is available under your kernel version.
-
-TODO: not talking about portability (just slightly mention that we will)
+- First, they only exist where kernel developers have added them. If you need visibility into that is not supported by the listed tracepoints, you either go through the long process of proposing a new tracepoint upstream (and convincing Linus to accept it), or use an alternative technique.
+- Second, they’re not always ideal for high-performance use cases — we’ll dig into that shortly.
 
 ## eBPF Raw Tracepoint
 
