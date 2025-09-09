@@ -4,7 +4,7 @@ kind: tutorial
 title: "eBPF Tracepoints, Kprobes, or Fprobes: Which One Should You Choose?"
 
 description: |
-  TODO
+  In this tutorial, we’ll explore how different eBPF tracing mechanisms work in practice by focusing on a single use case: capturing execve system call events. We’ll start with tracepoints, move on to raw tracepoints, and then cover kprobes and fprobes, showing how each attaches to the kernel and what data they expose. Along the way, we’ll compare their trade-offs in terms of stability, performance, and portability.
 
 playground:
   name: ebpf-playground-2bd77c1c
@@ -42,26 +42,16 @@ TODO: image
 
 ## eBPF Tracepoint
 
-eBPF tracepoint programs attach through the perf events subsystem to predefined hook points in the Linux kernel. These hook points are created with macros such as `TRACE_EVENT` (for general events) or `TRACE_EVENT_SYSCALL` (for syscall entry/exit) and exposed via the tracing and perf infrastructure. Once attached, an eBPF program runs its custom logic whenever the kernel hits the corresponding tracepoint.
+eBPF tracepoint programs attach through the perf events subsystem to predefined hook points in the Linux kernel. These hook points are created with macros such as `TRACE_EVENT` and exposed via the tracing and perf infrastructure. Once attached, an eBPF program runs its custom logic whenever the kernel hits the corresponding tracepoint.
 
 ::details-box
 ---
-:summary: What is the difference between tracing and perf infrastructure?
----
-
-Tracing infrastructure defines and registers tracepoints inside the kernel, makes them visible under `/sys/kernel/debug/tracing/`.
-
-Perf infrastructure is a "user-space API" (`perf_event_open`) that lets you attach eBPF programs to those tracepoints so code actually runs when they fire.
-::
-
-::details-box
----
-:summary: More information on TRACE_EVENT_SYSCALL macro
+:summary: More information on TRACE_EVENT macro
 ---
 
 Actually, `TRACE_EVENT` is the generic macro for defining custom tracepoints in the kernel, while `TRACE_EVENT_SYSCALL` is a specialized variant for syscalls. 
 
-In the kernel our `sys_enter(_execve)` tracepoint is defined in [`linux/include/trace/events/syscalls.h`](https://codebrowser.dev/linux/linux/include/trace/events/syscalls.h.html#18) using the `TRACE_EVENT_SYSCALL` macro.
+And there is **NO** static `sys_enter_execve` tracepoint in the kernel; instead, per-syscall tracepoints are auto-generated at build time using the `TRACE_EVENT_SYSCALL` template in [`include/trace/events/syscalls.h`](https://codebrowser.dev/linux/linux/include/trace/events/syscalls.h.html#18). This template is combined with syscall metadata from the architecture’s syscall tables (e.g., `arch/x86/entry/syscalls/syscall_64.tbl`) to produce entry and exit tracepoints like `sys_enter_execve` and `sys_exit_execve` to which perf and eBPF can then attach to.
 ::
 
 For example, the `sys_enter_execve` tracepoint fires when a process calls `execve`, exposing the program name and arguments. This makes it useful for tasks such as auditing, security monitoring, or analyzing user activity.
@@ -116,9 +106,7 @@ kind: info
 💡 The first four arguments, are actually not accessible by the eBPF code. This is a choice that dates back to the original inclusion of this code. See explaination in [commit 98b5c2c65c29](https://github.com/torvalds/linux/commit/98b5c2c65c2951772a8fc661f50d675e450e8bce).
 ::
 
-But other fields can generally be accessed using our eBPF program like showcased at the bottom in the `print fmt` line.
-
-Using that we can write our eBPF Tracepoint program.
+Using that we can create an (input) context struct and write our eBPF Tracepoint program.
 
 ```c [trace.c]
 ...
@@ -156,22 +144,22 @@ kind: info
 ::
 
 But there are two downsides to this:
-- First, they only exist where kernel developers have added them. If you need visibility into something that is not supported by the listed tracepoints, you either go through the long process of proposing a new tracepoint upstream (and convincing Linus to accept it), or use an alternative technique.
-- Second, they’re not always ideal for high-performance use cases — we’ll dig into that shortly.
+- First, **tracepoints only exist where kernel developers have added them**. If you need visibility into something that is not supported by the listed tracepoints, you either go through the long process of proposing a new tracepoint upstream (and convincing Linus to accept it), or use an alternative technique.
+- Second, they’re **not always ideal for high-performance use cases** — we’ll dig into that shortly.
 
 ## eBPF Raw Tracepoint
 
 Raw tracepoints may look similar to regular tracepoints, since both correspond to events you can see under `/sys/kernel/debug/tracing/available_events`. The difference lies in how eBPF attaches to them. 
 
-Regular tracepoints go through the perf events subsystem, which prepares a structured context for the eBPF program. Raw tracepoints bypass perf entirely and hook directly at the "tracepoint site".
+Regular tracepoints go through the perf events subsystem, which prepares a structured context for the eBPF program, while raw tracepoints bypass perf entirely and hook directly at the "tracepoint site".
 
 As a result, raw tracepoints don’t provide a pre-built context struct. Instead, an eBPF raw tracepoint program receives its arguments in a minimal form via struct `bpf_raw_tracepoint_args` and must interpret them manually.
 
 And because no extra work is done to package fields, raw tracepoints typically [run faster with less overhead than regular tracepoints](https://lwn.net/Articles/750569/).
 
-Another (rather large) difference is that, when you create eBPF raw tracepoint program in the kernel, there’s actually no static defined tracepoints on single syscalls but only on generic `sys_enter`/`sys_exit`.
+And if you missed it above, when you create eBPF raw tracepoint program in the kernel, there’s actually no static defined tracepoints on single syscalls but only on generic `sys_enter`/`sys_exit`.
 
-Therefore, if we want to act on specific syscall kernel event, we need to “filter” by syscall ID inside our Raw Tracepoint eBPF program.
+Therefore, if we want to act on specific syscall kernel event, we need to “filter” by syscall ID inside our raw Tracepoint eBPF program.
 
 ```c [trace.c]{1,3-8}
 SEC("raw_tracepoint/sys_enter")
@@ -284,7 +272,7 @@ int kprobe_execve_non_core(struct pt_regs *ctx) {
 }
 ```
 
-But the issue with kprobes is that you depend on whatever code happens to be in the kernel your system runs and are not assured to be stable across different kernel versions. Functions might exist in certain kernel versions, while not in others, structs can change, rename, or remove a field you are using.
+But the issue with kprobes is that you **depend on whatever code happens to be in the kernel your system runs and are not assured to be stable across different kernel versions**. Functions might exist in certain kernel versions, while not in others, structs can change, rename, or remove a field you are using.
 
 That's why there's also this seemingly weird comment in the code, but we'll look at how to avoid such "un-portable" scenarions in the upcoming tutorial.
 
@@ -293,7 +281,7 @@ That's why there's also this seemingly weird comment in the code, but we'll look
 kind: info
 ---
 
-💡 The same issues apply to kretprobes — kernel probes one can attach to the exit of the function.
+💡 The same applies for **kretprobes** — kernel probes one can attach to the exit of the function.
 ::
 
 Aslo, when we attach a kprobe, it’s similar to inserting a breakpoint in a debugger: the [kernel patches the target instruction with one that triggers a debug exception](https://elixir.bootlin.com/linux/v6.15.6/source/kernel/kprobes.c#L1152) (e.g., BRK on ARM64). When this instruction executes, the exception handler calls our probe handler.
@@ -306,17 +294,14 @@ Is there some alternative to allow triggering eBPF programs with less overhead? 
 
 ## Fprobes (fentry/fexit)
 
-Unlike kprobes, fprobes can only attach to only kernel function entry points using fentry or exit points using fexit, as their attaching mechanism ([eBPF trampoline](https://lwn.net/Articles/804937/)) differs from that of kprobes.
+As mentioned above, kprobes work by patching an instruction to trigger a debug exception, which adds context-switch and exception-handling overhead.  
 
-As mentioned above, Kprobes patch an instruction to trigger a debug exception, adding context-switch and exception-handling overhead.
+Fprobes in contrast build on the ftrace mechanism. The compiler inserts a NOP at each function entry, which can be patched at runtime into an [eBPF trampoline](https://lwn.net/Articles/804937/). This trampoline calls the eBPF program directly, avoiding exceptions and making attach and detach operations faster with much lower overhead.  
 
-But, fprobes use the ftrace mechanism where the compiler inserts a NOP at each function entry, which can be patched at runtime into a trampoline.
+The trade-off is that fprobes can only attach to function entry points (`fentry`) and exits (`fexit`). However, they can also attach to BPF programs such as XDP, TC, or cGroup hooks.
 
-The trampoline sets up arguments, calls the eBPF program directly, then returns to the function. By avoiding exceptions and using direct calls, fprobes attach/detach faster and run with much lower overhead.
+Additionally, `fexit` probes have access to the function’s input parameters, something kretprobes cannot provide.
 
-Fprobes programs can also be attached to BPF programs such as XDP, TC or cGroup programs which makes debugging eBPF programs easier. Kprobes lack this capability.
-
-Another advantage is that fexit hook has access to the input parameters of the function, which kretprobe does not.
 
 ```c [trace.c]
 SEC("fentry/__x64_sys_execve")
@@ -340,4 +325,10 @@ They do however require at least kernel version 5.5 which might be an issue if y
 kind: info
 ---
 💡 For the kprobe example above, I intentionally read the register value using `&regs→di`, whereas in the fprobe example I utilized [`PT_REGS_PARM*`](https://docs.ebpf.io/ebpf-library/libbpf/ebpf/PT_REGS_PARM/) macro which should be preffered.
+
+```c [trace.c]
+...
+    char *filename = (char *)PT_REGS_PARM1(regs);
+...
+```
 ::
