@@ -26,7 +26,7 @@ tagz:
 createdAt: 2025-09-09
 updatedAt: 2025-09-09
 
-cover: __static__/cover.png
+cover: __static__/tracing.png
 
 ---
 
@@ -38,7 +38,13 @@ But their overlapping functionality can make choosing the right one confusing.
 
 In this tutorial, we’ll implement several different eBPF tracing programs where all capture `execve` syscall events and compare their strengths and trade-offs.
 
-TODO: image
+::image-box
+---
+:src: __static__/tracing.png
+:alt: eBPF Tracing
+:max-width: 600px
+---
+::
 
 ## eBPF Tracepoint
 
