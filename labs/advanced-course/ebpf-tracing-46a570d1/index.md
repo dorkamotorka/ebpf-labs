@@ -30,9 +30,9 @@ cover: __static__/cover.png
 
 ---
 
-It is safe to say that almost all eBPF programs can extract and send kernel event data to user space applications. 
+It is safe to say that almost all eBPF programs can capture and send kernel event data to user space applications. 
 
-However, eBPF tracing program types like kprobes, fprobes, and tracepoints are often preferred because they hook onto points or functions in kernel with access to rich, actionable data for tasks like performance monitoring or syscall argument tracing. 
+However, eBPF tracing program types like kprobes, fprobes, and tracepoints are often preferred because they hook into kernel functions or events with access to rich, actionable data for tasks like performance monitoring or syscall argument tracing. 
 
 But their overlapping functionality can make choosing the right one confusing.
 
@@ -42,16 +42,18 @@ TODO: image
 
 ## eBPF Tracepoint
 
-eBPF tracepoint programs attach through the perf events subsystem to predefined hook points in the Linux kernel. These hook points are created with macros such as `TRACE_EVENT` and exposed via the tracing and perf infrastructure. Once attached, an eBPF program runs its custom logic whenever the kernel hits the corresponding tracepoint.
+eBPF tracepoint programs attach to predefined hook points in the Linux kernel. These hook points are defined in the kernel source code with a `TRACE_EVENT` macro. Once attached, an eBPF program runs its custom logic whenever the kernel hits the corresponding tracepoint.
 
 ::details-box
 ---
 :summary: More information on TRACE_EVENT macro
 ---
 
-Actually, `TRACE_EVENT` is the generic macro for defining custom tracepoints in the kernel, while `TRACE_EVENT_SYSCALL` is a specialized variant for syscalls. 
+`TRACE_EVENT` is the generic macro for defining custom tracepoints in the kernel, while `TRACE_EVENT_SYSCALL` is a specialized variant for syscalls through which eBPF Tracepoint hook are created. 
 
-And there is **NO** static `sys_enter_execve` tracepoint in the kernel; instead, per-syscall tracepoints are auto-generated at build time using the `TRACE_EVENT_SYSCALL` template in [`include/trace/events/syscalls.h`](https://codebrowser.dev/linux/linux/include/trace/events/syscalls.h.html#18). This template is combined with syscall metadata from the architecture’s syscall tables (e.g., `arch/x86/entry/syscalls/syscall_64.tbl`) to produce entry and exit tracepoints like `sys_enter_execve` and `sys_exit_execve` to which perf and eBPF can then attach to.
+In fact, there is **NO** static `sys_enter_execve` tracepoint defined in the kernel.
+
+Instead, per-syscall tracepoints are generated at build time using the `TRACE_EVENT_SYSCALL` template in [`include/trace/events/syscalls.h`](https://codebrowser.dev/linux/linux/include/trace/events/syscalls.h.html) and syscall metadata from the architecture’s syscall tables like [`arch/x86/entry/syscalls/syscall_64.tbl`](https://raw.githubusercontent.com/torvalds/linux/master/arch/x86/entry/syscalls/syscall_64.tbl). This generation is handled by code in [`kernel/trace/trace_syscalls.c`](https://codebrowser.dev/linux/linux/kernel/trace/trace_syscalls.c.html) to produce an entry tracepoint like `sys_enter_execve` to which eBPF can then attach to.
 ::
 
 For example, the `sys_enter_execve` tracepoint fires when a process calls `execve`, exposing the program name and arguments. This makes it useful for tasks such as auditing, security monitoring, or analyzing user activity.
@@ -76,7 +78,7 @@ syscalls:sys_exit_pipe
 
 The output format is in the form `<category>:<name>`.
 
-Using the `category` and the `name`, you can then view the input arguments for a tracepoint by checking the contents of `/sys/kernel/debug/tracing/events/<category>/<name>/format`.
+Using the `category` and the `name`, you can then view the input arguments for each tracepoint by printing the contents of `/sys/kernel/debug/tracing/events/<category>/<name>/format`.
 
 ```bash
 sudo cat /sys/kernel/debug/tracing/events/syscalls/sys_enter_execve/format
@@ -106,7 +108,7 @@ kind: info
 💡 The first four arguments, are actually not accessible by the eBPF code. This is a choice that dates back to the original inclusion of this code. See explaination in [commit 98b5c2c65c29](https://github.com/torvalds/linux/commit/98b5c2c65c2951772a8fc661f50d675e450e8bce).
 ::
 
-Using that we can create an (input) context struct and write our eBPF Tracepoint program.
+With this information, you can then define an input context struct that matches the accessible fields and then write your eBPF tracepoint program against it.
 
 ```c [trace.c]
 ...
@@ -149,22 +151,28 @@ But there are two downsides to this:
 
 ## eBPF Raw Tracepoint
 
-Raw tracepoints may look similar to regular tracepoints, since both correspond to events you can see under `/sys/kernel/debug/tracing/available_events`. The difference lies in how eBPF attaches to them. 
+Raw tracepoints may look similar to regular tracepoints, since both correspond to events you can view under `/sys/kernel/debug/tracing/available_events`. The difference lies in how the kernel passes arguments to them.
 
-Regular tracepoints go through the perf events subsystem, which prepares a structured context for the eBPF program, while raw tracepoints bypass perf entirely and hook directly at the "tracepoint site".
+For regular tracepoints, the kernel pre-processes the arguments and builds a context struct. In contrast, eBPF raw tracepoints receive their arguments in a raw format via `struct bpf_raw_tracepoint_args`, and the program must interpret them manually.
 
-As a result, raw tracepoints don’t provide a pre-built context struct. Instead, an eBPF raw tracepoint program receives its arguments in a minimal form via struct `bpf_raw_tracepoint_args` and must interpret them manually.
+Because no extra work is done to package fields, raw tracepoints typically [run faster with less overhead than regular tracepoints](https://lwn.net/Articles/750569/).
 
-And because no extra work is done to package fields, raw tracepoints typically [run faster with less overhead than regular tracepoints](https://lwn.net/Articles/750569/).
+Another important difference is that there are no per-syscall raw tracepoints like `sys_enter_execve`. Instead, only the generic `sys_enter` and `sys_exit` tracepoints exist. 
 
-And if you missed it above, when you create eBPF raw tracepoint program in the kernel, there’s actually no static defined tracepoints on single syscalls but only on generic `sys_enter`/`sys_exit`.
+::details-box
+---
+:summary: What is the difference between sys_enter and sys_exit tracepoint?
+---
 
-Therefore, if we want to act on specific syscall kernel event, we need to “filter” by syscall ID inside our raw Tracepoint eBPF program.
+💡 `sys_enter` hooks trigger on every syscall event entry, while `sys_exit` hooks trigger on its return, capturing the return value of the syscall.
+::
+
+This means that if you want to act on a specific syscall event inside your raw tracepoint eBPF program, you need to filter by syscall ID.
 
 ```c [trace.c]{1,3-8}
 SEC("raw_tracepoint/sys_enter")
 int handle_execve_raw_tp_non_core(struct bpf_raw_tracepoint_args *ctx) {
-    // There is no method to attach a raw_tp or tp_btf directly to a single syscall... 
+    // There is no method to attach a raw_tp directly to a single syscall... 
     // this is because there are no static defined tracepoints on single syscalls but only on generic sys_enter/sys_exit
     // So we have to filter by syscall ID
     unsigned long id = BPF_PROBE_READ(ctx, args[1]);
@@ -184,16 +192,15 @@ int handle_execve_raw_tp_non_core(struct bpf_raw_tracepoint_args *ctx) {
     return 0;
 }
 ```
-
 ::remark-box
 ---
 kind: info
 ---
 
-💡 `sys_enter` hooks trigger on every syscall event entry, while `sys_exit` hooks trigger on its return, capturing the return value of the syscall.
+💡 `SEC("raw_tp/xx")` and `SEC("raw_tracepoint/xx")` are equivalent, and you can use either one according to personal preference.
 ::
 
-Notice also that we are reading the arguments of the syscall by extracting them from the CPU registers. The [System V ABI](https://gitlab.com/x86-psABIs/x86-64-ABI/-/jobs/artifacts/master/raw/x86-64-ABI/abi.pdf?job=build) specifies which arguments should be present in which CPU registers.
+Notice also that we are reading the arguments of the syscall from the CPU registers. The [System V ABI](https://gitlab.com/x86-psABIs/x86-64-ABI/-/jobs/artifacts/master/raw/x86-64-ABI/abi.pdf?job=build) specifies which arguments should be present in which CPU registers.
 
 ```c [trace.c]
 ...
