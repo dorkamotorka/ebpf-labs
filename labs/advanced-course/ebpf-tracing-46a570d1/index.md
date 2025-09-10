@@ -125,16 +125,16 @@ struct trace_sys_enter_execve {
     const u8 *const *envp; // offset=32, size=8                             
 };                                                                          
                                                                             
-SEC("tracepoint/syscalls/sys_enter_execve")                                 
-int handle_execve_tp_non_core(struct trace_sys_enter_execve *ctx) {         
-    char *filename_ptr = (char *)BPF_PROBE_READ(ctx, filename);             
-                                                                            
-    u8 buf[ARGSIZE];                                                        
-    bpf_probe_read_user_str(buf, sizeof(buf), filename_ptr);                
-                                                                             
+SEC("tracepoint/syscalls/sys_enter_execve")
+int handle_execve_tp_non_core(struct trace_sys_enter_execve *ctx) {
+    const char *filename_ptr = (const char *)(ctx->filename);
+
+    u8 buf[ARGSIZE];
+    bpf_probe_read_user_str(buf, sizeof(buf), filename_ptr);
+
     bpf_printk("Tracepoint triggered for execve syscall with parameter filename: %s\n", buf);
-    return 0;                                                               
-} 
+    return 0;
+}
 ```
 
 ::remark-box
@@ -169,17 +169,23 @@ Another important difference is that there are no per-syscall raw tracepoints li
 
 This means that if you want to act on a specific syscall event inside your raw tracepoint eBPF program, you need to filter by syscall ID.
 
-```c [trace.c]{1,3-8}
+```c [trace.c]{1,3-14}
 SEC("raw_tracepoint/sys_enter")
 int handle_execve_raw_tp_non_core(struct bpf_raw_tracepoint_args *ctx) {
     // There is no method to attach a raw_tp directly to a single syscall... 
     // this is because there are no static defined tracepoints on single syscalls but only on generic sys_enter/sys_exit
     // So we have to filter by syscall ID
-    unsigned long id = BPF_PROBE_READ(ctx, args[1]);
-    if (id != 59)  // execve sycall ID
+    //
+    // The arguments of input context struct are defined in TP_PROTO of the tracepoint definition in kernel.
+    // Ref: https://codebrowser.dev/linux/linux/include/trace/events/syscalls.h.html#20
+    // In this case it is TP_PROTO(struct pt_regs *regs, long id):
+    // args[0] -> struct pt_regs *regs
+    // args[1] -> long id
+    unsigned long id = ctx->args[1];
+    if (id != 59)   // execve sycall ID
 	    return 0;
 
-    struct pt_regs *regs = (struct pt_regs *)BPF_PROBE_READ(ctx, args[0]);
+    struct pt_regs *regs = (struct pt_regs *)ctx->args[0];
 
     const char *filename;
     // Intentionally accessing the register (without using PT_REGS_PARM* macro) directly for illustration
@@ -263,16 +269,17 @@ kind: info
 ```c [trace.c]
 SEC("kprobe/__x64_sys_execve")
 int kprobe_execve_non_core(struct pt_regs *ctx) {
-    char *filename = (char *)PT_REGS_PARM1(ctx);
+    // On x86-64, the entry wrapper __x64_sys_execve is called with a pointer to struct pt_regs in %rdi -> pt_regs.di
+    struct pt_regs *regs = (struct pt_regs *)ctx->di;
 
-    // This is INTENTIONALLY not portable, so you might have to actually replace the first line with this
-    //struct pt_regs *ctx2 = (struct pt_regs *)PT_REGS_PARM1(ctx);
-    //char *filename = (char *)PT_REGS_PARM1(ctx2);
+    // Read the filename "from the inner regs"
+    unsigned long di = 0;
+    bpf_probe_read_kernel(&di, sizeof(di), &regs->di);
+    const char *filename = (const char *)di;
 
     char buf[ARGSIZE];
     bpf_probe_read_user_str(buf, sizeof(buf), filename);
 
-    // Print the flags value
     bpf_printk("Kprobe triggered for execve syscall with parameter filename: %s\n", buf);
 
     return 0;
@@ -281,7 +288,7 @@ int kprobe_execve_non_core(struct pt_regs *ctx) {
 
 But the issue with kprobes is that you **depend on whatever code happens to be in the kernel your system runs and are not assured to be stable across different kernel versions**. Functions might exist in certain kernel versions, while not in others, structs can change, rename, or remove a field you are using.
 
-That's why there's also this seemingly weird comment in the code, but we'll look at how to avoid such "un-portable" scenarions in the upcoming tutorial.
+In the upcoming tutorial, we’ll look at how to avoid these kinds of “non-portable” scenarios.
 
 ::remark-box
 ---
@@ -291,7 +298,7 @@ kind: info
 💡 The same applies for **kretprobes** — kernel probes one can attach to the exit of the function.
 ::
 
-Aslo, when we attach a kprobe, it’s similar to inserting a breakpoint in a debugger: the [kernel patches the target instruction with one that triggers a debug exception](https://elixir.bootlin.com/linux/v6.15.6/source/kernel/kprobes.c#L1152) (e.g., BRK on ARM64). When this instruction executes, the exception handler calls our probe handler.
+Also, when we attach a kprobe, it’s similar to inserting a breakpoint in a debugger: the [kernel patches the target instruction with one that triggers a debug exception](https://elixir.bootlin.com/linux/v6.15.6/source/kernel/kprobes.c#L1152). When this instruction executes, the exception handler calls our probe handler.
 
 And while this mechanism works well, it has a downside.
 
@@ -305,18 +312,18 @@ As mentioned above, kprobes work by patching an instruction to trigger a debug e
 
 Fprobes in contrast build on the ftrace mechanism. The compiler inserts a NOP at each function entry, which can be patched at runtime into an [eBPF trampoline](https://lwn.net/Articles/804937/). This trampoline calls the eBPF program directly, avoiding exceptions and making attach and detach operations faster with much lower overhead.  
 
-The trade-off is that fprobes can only attach to function entry points (`fentry`) and exits (`fexit`). However, they can also attach to BPF programs such as XDP, TC, or cGroup hooks.
+The trade-off is that fprobes can only attach to function entry points (fentry) and exits (fexit). However, they can also attach to BPF programs such as XDP, TC, or cGroup hooks.
 
-Additionally, `fexit` probes have access to the function’s input parameters, something kretprobes cannot provide.
+Additionally, fexit probes have access to the function’s input parameters, something kretprobes cannot provide.
 
 
 ```c [trace.c]
 SEC("fentry/__x64_sys_execve")
 int fentry_execve(u64 *ctx) {
-    // Direct kernel memory access
     struct pt_regs *regs = (struct pt_regs *)ctx[0];
 
-    char *filename = (char *)PT_REGS_PARM1(regs);
+    // x86-64: first arg in rdi -> pt_regs.di
+    const char *filename = (const char *)regs->di;
     char buf[ARGSIZE];
     bpf_probe_read_user_str(buf, sizeof(buf), filename);
 
@@ -331,11 +338,8 @@ They do however require at least kernel version 5.5 which might be an issue if y
 ---
 kind: info
 ---
-💡 For the kprobe example above, I intentionally read the register value using `&regs→di`, whereas in the fprobe example I utilized [`PT_REGS_PARM*`](https://docs.ebpf.io/ebpf-library/libbpf/ebpf/PT_REGS_PARM/) macro which should be preffered.
+💡 For the kprobe example above, I intentionally read the register value using `&regs→di`, but I could also use [`PT_REGS_PARM*`](https://docs.ebpf.io/ebpf-library/libbpf/ebpf/PT_REGS_PARM/) macro which should be preffered.
 
-```c [trace.c]
-...
-    char *filename = (char *)PT_REGS_PARM1(regs);
-...
-```
 ::
+
+Before I let you go, note that there are also BTF-enabled tracepoints, which we’ll cover in the upcoming tutorial alongside an introduction to BTF (BPF Type Format).
