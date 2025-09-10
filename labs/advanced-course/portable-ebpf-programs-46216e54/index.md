@@ -26,21 +26,15 @@ tagz:
 createdAt: 2025-09-10
 updatedAt: 2025-09-10
 
-cover: __static__/cover.png
+cover: __static__/tracing.png
 
-
-# Uncomment to embed (one or more) challenges.
-# challenges:
-#   challenge_name_1: {}
-#   challenge_name_2: {}
-
-# Uncomment to add (one or more) background tasks.
-# tasks:
-#   init_task_1:
-#     init: true
-#     run: ...
-#   regular_task_1:
-#     run: ...
 ---
 
+::image-box
+---
+:src: __static__/tracing.png
+:alt: eBPF Tracing
+:max-width: 600px
+---
+::
 
