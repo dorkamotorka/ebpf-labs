@@ -1,7 +1,7 @@
 ---
 kind: tutorial
 
-title: Truly Portable eBPF Programs
+title: BTFHub and Building Truly Portable eBPF Programs
 
 description: |
   TODO
@@ -37,3 +37,9 @@ cover: __static__/tracing2.png
 :max-width: 600px
 ---
 ::
+
+Aqua Security maintains a repository called btfhub-archive, which provides prebuilt BTF files for a wide range of kernels that lack embedded BTF.
+
+You can download the relevant BTF files for the kernels you want to support and embed them directly into your eBPF program—eliminating the need for BTF support on the target system entirely.
+
+I could stop here and show you a simple example of how it’s done—but I’ve taken it a step further.
