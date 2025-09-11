@@ -54,7 +54,7 @@ To better understand the problem, let’s look at a hypothetical example.
 
 Suppose you compile an eBPF program on kernel version 5.3, but it fails to run on 5.4.
 
-**Why?** 
+**Why would that happen?** 
 
 Because each kernel version ships with its own kernel headers, which define structs and memory layouts. Even small changes in these definitions can break eBPF programs.
 
@@ -91,24 +91,24 @@ struct tcphdr {       /* Offset Size */
 kind: info
 ---
 
-In this hypothetical struct, `seq` was renamed to `seque`, and switched with `ack_seq` which causes the offsets to change.
+In this hypothetical struct, `seq` was renamed to `seque` and swapped with `ack_seq`, causing their offsets to change.
 ::
 
 **See the problem?**
 
 Your code may rely on specific fields or offsets, which are likely to change across kernel versions.
 
-Since the eBPF program itself has no control over these changes, there’s an inherent need for a solution to ensure the portability of eBPF programs.
-
 ::details-box
 ---
-:summary: Example of real-world kernel struct changes
+:summary: Example of some real-world kernel struct changes
 ---
 
 In [this commit](https://git.kernel.org/pub/scm/linux/kernel/git/tip/tip.git/commit/?id=026842d148b920dc28f0499ede4950dcb098d4d5), the syscall tracepoint context was modified so that the field holding the syscall number was renamed from `nr` to `__syscall_nr`.
 
 And as explained [here](https://tanelpoder.com/posts/ebpf-pt-regs-error-on-linux-blame-fred/), the introduction of the **FRED** (Flexible Return and Event Delivery) mechanism on x86 (kernel v6.9) altered the way `pt_regs` are stored on the stack, adding padding and moving register offsets.
 ::
+
+Since the eBPF program itself has no control over these changes, there’s an inherent need for a solution to ensure the portability of eBPF programs.
 
 ## BPF CO-RE (Compile Once – Run Everywhere)
 If you search online, you'll find plenty of resources recommending the use of [BPF CO-RE (Compile Once – Run Everywhere)](https://docs.ebpf.io/concepts/core/) to address this issue.
@@ -141,7 +141,7 @@ int handle_execve_tp_non_core(struct trace_sys_enter_execve *ctx) {
 }
 ```
 
-You should replace the lines of code that access the kernel struct context with the BPF_CORE_READ() family, which enables access to struct fields in a way that adapts across kernel versions:
+You should replace the lines of code that access the kernel struct context with the `BPF_CORE_*` family of helper functions, which enables access to struct fields in a way that adapts across kernel versions:
 
 ```c {2-3,6}
 SEC("tracepoint/syscalls/sys_enter_execve")
@@ -164,11 +164,34 @@ kind: info
 Why is that? Read along.
 ::
 
-In short, the `BPF_CORE_READ()` family of helpers enables relocatable reads of kernel structs.
+In short, the `BPF_CORE_*` family of helpers enables relocatable reads of kernel structs.
 
 So if a certain struct field (like filename in the example) sits at a different offset in another OS or kernel version, these helpers can still locate and read it correctly.
 
-TODO: add here explantion of the `BPF_CORE_READ()` family of helpers
+::details-box
+---
+:summary: More information about the `BPF_CORE_*` family of helpers
+---
+
+All `BPF_CORE_*` helpers let your eBPF program read fields from kernel (or user) structs in a way that survives kernel changes (renames, field reordering, different offsets) using BTF-based CO-RE relocations:
+
+- `BPF_CORE_READ(src, field, [nested_field, ...])` - Reads the value of a (possibly nested) field from a kernel struct and on failure returns a zero value, which is not that ideal, since you can’t distinguish “real zero read” from “failed read”.
+- `BPF_CORE_READ_INTO(&dst, src, field, [nested_field, ...])` - Reads into `dst` and returns a zero value on success and a negative value on error.
+- `BPF_CORE_READ_USER` / `BPF_CORE_READ_USER_INTO` - Same as above, but for user-memory pointers.
+- and others..
+
+You'll also see developers using `bpf_core_read()` or similar lower-case helpers — these are low-level functions that copy bytes from a relocatable address into a buffer and return an error code. In contrast, `BPF_CORE_READ()` is a macro built on top that automatically follows pointer chains and applies CO-RE relocations, making it especially convenient for accessing nested kernel structs.
+```c
+struct task_struct *task = bpf_get_current_task();
+
+// Using BPF_CORE_READ: follows pointer chain automatically
+u32 pid = BPF_CORE_READ(task, real_parent, pid);
+
+// Using bpf_core_read: you must spell out the destination and size
+u32 pid2 = 0;
+bpf_core_read(&pid2, sizeof(pid2), &task->real_parent->pid);
+```
+::
 
 Under the hood, this is made possible by BPF CO-RE relocation information and [BTF (BPF Type Format)](https://docs.ebpf.io/concepts/btf/).
 
@@ -176,20 +199,22 @@ Under the hood, this is made possible by BPF CO-RE relocation information and [B
 
 ## vmlinux.h Header file
 
-If you peek into almost any production eBPF codebase, you’ll notice all of them include the `vmlinux.h` header. There's one also in our lab directory.
+If you peek into almost any production eBPF codebase, you’ll notice all of them include (or generate during the build-time) the `vmlinux.h` header. 
+
+There's one also in our `ebpf-labs-advances/lab2` directory for this lab - open it.
 
 This file contains definitions for all kernel structs like `trace_event_raw_sys_enter` in the example above, generated based on the currently running kernel.
 
-::remark-box
+::details-box
 ---
-kind: info
+:summary: How does one create a vmlinux.h file?
 ---
 💡 You can generate this header file using:
 ```bash
 sudo bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h
 ```
 
-But in general, these files are usually build during build time, e.g. in the `Makefile`.
+But as mentioned above, these files are usually build during build time, e.g. in the `Makefile`.
 ::
 
 Here’s where it gets interesting — this header includes a few special lines at both the top and bottom:
@@ -210,7 +235,20 @@ The line `__attribute__((preserve_access_index))` at the top of `vmlinux.h`, tel
 
 And the `clang attribute push` ensures this applies to all struct definitions until the matching `clang attribute pop` at the bottom of the file.
 
-In other words, when you reference a field (like `filename` in the example above) from a kernel struct, the compiler doesn’t just hardcode its offset. Instead, it records metadata—like the field’s name, type, offset, and parent struct.
+In other words, when you reference a field (like `filename` in the examples in `ebpf-labs-advances/lab2/trace.c` file) from a kernel struct, the compiler doesn’t just hardcode its offset. Instead, it records metadata—like the field’s name, type, offset, and parent struct.
+
+```c [trace.c] {3,6}
+SEC("tracepoint/syscalls/sys_enter_execve")
+int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
+    char *filename_ptr = (char *)BPF_CORE_READ(ctx, args[0]);
+
+    u8 filename[ARGSIZE];
+    bpf_core_read_user_str(&filename, sizeof(filename), filename_ptr);
+
+    bpf_printk("Tracepoint (CO-RE) triggered for execve syscall with parameter filename: %s\n", filename);
+    return 0;
+}
+```
 
 ::details-box
 ---
@@ -236,15 +274,63 @@ This metadata is recorded in BPF Type Format (BTF).
 
 ## BPF Type Format (BTF)
 
-We can actually dump the recorded BTF information for the tracepoint example above using:
+To understand how this metadata looks like, let's build and run the program from `ebpf-labs-advanced` directory, using:
+```bash
+go generate
+go build
+sudo ./lab2
+```
+And then dump the recorded BTF information for the `handle_execve_tp` tracepoint example above using:
 
 ```bash
 sudo bpftool prog # Find the BTF ID
 sudo bpftool btf dump id <prog-btf-id>
 ```
 ```
-TODO
+[1] FUNC 'handle_execve_tp' type_id=14 linkage=global
+[2] INT 'int' size=4 bits_offset=0 nr_bits=32 encoding=SIGNED
+[3] INT 'unsigned short' size=2 bits_offset=0 nr_bits=16 encoding=(none)
+[4] INT 'unsigned char' size=1 bits_offset=0 nr_bits=8 encoding=(none)
+[5] STRUCT 'trace_entry' size=8 vlen=4
+        'type' type_id=3 bits_offset=0
+        'flags' type_id=4 bits_offset=16
+        'preempt_count' type_id=4 bits_offset=24
+        'pid' type_id=2 bits_offset=32
+[6] INT 'long' size=8 bits_offset=0 nr_bits=64 encoding=SIGNED
+[7] INT '__ARRAY_SIZE_TYPE__' size=4 bits_offset=0 nr_bits=32 encoding=(none)
+[8] INT 'unsigned long' size=8 bits_offset=0 nr_bits=64 encoding=(none)
+[9] ARRAY '(anon)' type_id=8 index_type_id=7 nr_elems=6
+[10] INT 'char' size=1 bits_offset=0 nr_bits=8 encoding=SIGNED
+[11] ARRAY '(anon)' type_id=10 index_type_id=7 nr_elems=0
+[12] STRUCT 'trace_event_raw_sys_enter' size=64 vlen=4
+        'ent' type_id=5 bits_offset=0
+        'id' type_id=6 bits_offset=64
+        'args' type_id=9 bits_offset=128
+        '__data' type_id=11 bits_offset=512
+[13] PTR '(anon)' type_id=12
+[14] FUNC_PROTO '(anon)' ret_type_id=2 vlen=1
+        'ctx' type_id=13
 ```
+
+::details-box
+---
+:summary: Explanation of the BTF output
+---
+Each numbered entry corresponds to a type definition: integers, arrays, structs, pointers, function prototypes, and so on.
+
+For example:
+- `[1] FUNC 'handle_execve_tp'` – defines a global function named `handle_execve_tp`.
+- `[14] FUNC_PROTO` – says this function returns an int `(type_id=2)` and takes one parameter called ctx.
+- `[13] PTR → [12] STRUCT 'trace_event_raw_sys_enter'` – the ctx argument is a pointer to a `trace_event_raw_sys_enter struct`.
+- `[12] STRUCT 'trace_event_raw_sys_enter'` – represents the syscall-enter tracepoint data:
+  - `ent` → a trace_entry header (`[5]`) with fields like `type`, `flags`, `preempt_count`, `pid`.
+  - `id` → syscall ID (long).
+  - `args` → array of six unsigned long values (syscall arguments).
+  - `__data` → flexible array for extra data.
+- `[2]–[11]` – supporting integer and array type definitions used to build the structs.
+::
+
+Well, this is quite a lot to take it, but what it really shows is the BTF (BPF Type Format) description of kernel structures/types your program is working with.
 
 And for your eBPF program to work across kernel versions—where struct layouts may differ—the target kernel must also be compiled with BTF support. Without it, the program won’t be able to resolve the correct fields offsets at runtime.
 
