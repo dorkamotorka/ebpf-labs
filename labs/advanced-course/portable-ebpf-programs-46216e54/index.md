@@ -280,10 +280,10 @@ go generate
 go build
 sudo ./lab2
 ```
-And then dump the recorded BTF information for the `handle_execve_tp` tracepoint example above using:
+And then dump the recorded BTF information for the `handle_execve_tp` tracepoint program using:
 
 ```bash
-sudo bpftool prog # Find the BTF ID
+sudo bpftool prog # Find the BTF ID (`btf_id`) of the `handle_execve_tp` program
 sudo bpftool btf dump id <prog-btf-id>
 ```
 ```
@@ -334,11 +334,31 @@ Well, this is quite a lot to take it, but what it really shows is the BTF (BPF T
 
 And for your eBPF program to work across kernel versions—where struct layouts may differ—the target kernel must also be compiled with BTF support. Without it, the program won’t be able to resolve the correct fields offsets at runtime.
 
+::details-box
+---
+:summary: How to check if your kernel is compiled with BTF support?
+---
+
+You can verify this using:
+
+```bash
+grep CONFIG_DEBUG_INFO_BTF /boot/config-$(uname -r)
+```
+```
+CONFIG_DEBUG_INFO_BTF=y
+```
+
+In case it doesn’t, then you have two options:
+
+- Re-compile the kernel with the `CONFIG_DEBUG_INFO_BTF=y` option or upgrade the kernel, which is time-consuming, inconvenient — especially if the machine is in production.
+- Or better, provide the BTF information of that specific kernel alongside your program. We'll talk about this in the next tutorial
+::
+
 ::remark-box
 ---
 kind: info
 ---
-💡 To avoid confusion, the BTF data shown above is only a metadata record of kernel structs and their layout that our eBPF program uses. While the BTF information from the target kernel is different and can be inspected directly with:
+💡 To avoid confusion, the BTF data shown above is only a metadata record of kernel structs and their layout that our eBPF program uses. While the BTF information from the target kernel is different and can be inspected (on the target kernel) with:
 ```bash
 sudo bpftool btf dump file /sys/kernel/btf/vmlinux
 ```
@@ -362,13 +382,9 @@ sudo bpftool btf dump file /sys/kernel/btf/vmlinux
 
 **Why is this necessary?**
 
-When your eBPF program is loaded by a BPF loader like [libbpf](https://github.com/libbpf/libbpf), the loader compares the program’s BTF data with the target kernel’s BTF. Since it's quite likely your program won't run only on the kernel it was compiled on, the loader needs to resolve types, updates offsets, and adjusts field accesses to ensure the program reads kernel structures correctly.
+When your eBPF program is loaded by a BPF loader like [libbpf](https://github.com/libbpf/libbpf), the loader compares the program’s BTF data with the target kernel’s BTF. Since it's quite likely your program won't only run on the kernel it was compiled on, the loader needs to resolve types, updates offsets, and adjusts field accesses to ensure the program reads kernel structures correctly.
 
 This process is known as <i>field offset relocation</i>.
-
-**But one subtle limitation of this approach is that tools relying on BTF data implicitly depend on the target kernel being compiled with BTF support.**
-
-TODO: How to check if BTF is present
 
 Although most eBPF kernels nowadays support BTF, it's not really something we can rely on when we want to design truly portable eBPF programs.
 
@@ -378,4 +394,4 @@ Without BTF support in the target kernel, the loader can't perform field offset 
 
 Actually—yes, but we'll cover that in the next tutorial.
 
-TODO: mention this lab includes the portable code for all the examples from lab1.
+If you haven’t checked it yet, the code in `ebpf-labs-advanced/lab2` provides portable versions of Tracepoint, Raw Tracepoint, kprobe, and fprobe eBPF programs for capturing `execve` syscall events.
