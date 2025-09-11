@@ -394,4 +394,34 @@ Without BTF support in the target kernel, the loader can't perform field offset 
 
 Actually—yes, but we'll cover that in the next tutorial.
 
-If you haven’t checked it yet, the code in `ebpf-labs-advanced/lab2` provides portable versions of Tracepoint, Raw Tracepoint, kprobe, and fprobe eBPF programs for capturing `execve` syscall events.
+If you haven’t checked it yet, the code in `ebpf-labs-advanced/lab2` provides portable versions of Tracepoint, Raw Tracepoint, kprobe, fprobe, BTF-Enabled Raw Tracepoint eBPF programs for capturing `execve` syscall events.
+
+::remark-box
+---
+kind: warning
+---
+**⭐️ Extra Insight ⭐️**
+
+To one’s surprise, you don't always need to use `BPF_CORE_*` helpers to do CO-RE-relocatable reads. 
+
+**BTF-Enabled Raw Tracepoint** allow you to directly access kernel memory.
+
+```c [trace.c] {1,7-8,10}
+SEC("tp_btf/sys_enter")
+int handle_execve_btf(u64 *ctx) {
+    long int syscall_id = (long int)ctx[1];
+    if (syscall_id != 59)
+        return 0;
+
+    struct pt_regs *regs = (struct pt_regs *)ctx[0]; // No need to use BPF_CORE_READ helper
+    char *filename = (char *)PT_REGS_PARM1(regs); // No need to use PT_REGS_PARM1_CORE helper
+    char buf[ARGSIZE];
+    bpf_probe_read_user_str(buf, sizeof(buf), filename); // No need to use bpf_core_read_user_str helper
+
+    bpf_printk("BTF-enabled tracepoint (CO-RE) triggered for execve syscall with parameter filename: %s\n", buf);
+    return 0;
+}
+```
+This makes the BTF-enabled tracepoint slightly more convenient to develop compared to the raw and regular tracepoints.
+
+::
