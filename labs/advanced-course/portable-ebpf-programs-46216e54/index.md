@@ -34,7 +34,7 @@ In a perfect world, everyone’s systems would be fully updated, patched regular
 
 But let’s be real—that’s rarely the case.
 
-Some environments still rely on legacy versions of Ubuntu or Fedora, while others don't even have their kernels compiled with BTF (BPF Type Format) support.
+Some environments still rely on legacy versions of Ubuntu or Fedora, while others don't have their kernels compiled with BTF (BPF Type Format) support.
 
 And if you’re maintaining any open-source tools, things get even messier. You have zero control over what kind of system your users will run your program on.
 
@@ -257,6 +257,8 @@ When your eBPF program is loaded by a BPF loader like [libbpf](https://github.co
 This process is known as <i>field offset relocation</i>.
 
 **But one subtle limitation of this approach is that tools relying on BTF data implicitly depend on the target kernel being compiled with BTF support.**
+
+TODO: How to check if BTF is present
 
 Although most eBPF kernels nowadays support BTF, it's not really something we can rely on when we want to design truly portable eBPF programs.
 
