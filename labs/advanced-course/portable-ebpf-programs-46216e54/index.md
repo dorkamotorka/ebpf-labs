@@ -314,7 +314,7 @@ sudo bpftool btf dump id <prog-btf-id>
 
 ::details-box
 ---
-:summary: Explanation of the BTF output
+:summary: Detailed explanation of the BTF output
 ---
 Each numbered entry corresponds to a type definition: integers, arrays, structs, pointers, function prototypes, and so on.
 
@@ -334,7 +334,31 @@ Well, this is quite a lot to take it, but what it really shows is the BTF (BPF T
 
 And for your eBPF program to work across kernel versions—where struct layouts may differ—the target kernel must also be compiled with BTF support. Without it, the program won’t be able to resolve the correct fields offsets at runtime.
 
-TODO: to avoid any kind of confusion, BTF is just metadata record of kernel structs and their layout..TODO: improve
+::remark-box
+---
+kind: info
+---
+💡 To avoid confusion, the BTF data shown above is only a metadata record of kernel structs and their layout that our eBPF program uses. While the BTF information from the target kernel is different and can be inspected directly with:
+```bash
+sudo bpftool btf dump file /sys/kernel/btf/vmlinux
+```
+```
+[1] FUNC_PROTO '(anon)' ret_type_id=0 vlen=0
+[2] FUNC 'verify_cpu' type_id=1 linkage=static
+[3] FUNC 'sev_verify_cbit' type_id=1 linkage=static
+[4] INT 'long unsigned int' size=8 bits_offset=0 nr_bits=64 encoding=(none)
+[5] CONST '(anon)' type_id=4
+[6] ARRAY '(anon)' type_id=4 index_type_id=21 nr_elems=2
+[7] PTR '(anon)' type_id=9
+[8] INT 'char' size=1 bits_offset=0 nr_bits=8 encoding=SIGNED
+[9] CONST '(anon)' type_id=8
+[10] INT 'unsigned int' size=4 bits_offset=0 nr_bits=32 encoding=(none)
+[11] CONST '(anon)' type_id=10
+[12] INT 'signed char' size=1 bits_offset=0 nr_bits=8 encoding=SIGNED
+[13] TYPEDEF '__u8' type_id=14
+...
+```
+::
 
 **Why is this necessary?**
 
