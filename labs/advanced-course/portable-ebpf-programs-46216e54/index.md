@@ -394,7 +394,7 @@ Without BTF support in the target kernel, the loader can't perform field offset 
 
 Actually—yes, but we'll cover that in the next tutorial.
 
-If you haven’t checked it yet, the code in `ebpf-labs-advanced/lab2` provides portable versions of Tracepoint, Raw Tracepoint, kprobe, fprobe, BTF-Enabled Raw Tracepoint eBPF programs for capturing `execve` syscall events.
+If you haven’t checked it yet, the code in `ebpf-labs-advanced/lab2` provides portable versions of Tracepoint, Raw Tracepoint, kprobe, fprobe and BTF-Enabled Raw Tracepoint eBPF programs for capturing `execve` syscall events.
 
 ::remark-box
 ---
