@@ -4,7 +4,7 @@ kind: tutorial
 title: "eBPF Tracepoints, Kprobes, or Fprobes: Which One Should You Choose?"
 
 description: |
-  In this tutorial, we’ll explore how different eBPF tracing mechanisms work in practice by focusing on a single use case: capturing execve system call events. We’ll start with tracepoints, move on to raw tracepoints, and then cover kprobes and fprobes, showing how each attaches to the kernel and what data they expose. Along the way, we’ll compare their trade-offs in terms of stability, performance, and portability.
+  In this tutorial, we’ll look at how different eBPF tracing mechanisms work in practice by focusing on a single use case: capturing execve system call events. We’ll start with tracepoints, move on to raw tracepoints, and then cover kprobes and fprobes, showing how each attaches to the kernel and what data they expose. Along the way, we’ll compare their trade-offs in terms of stability, performance, and portability.
 
 playground:
   name: ebpf-playground-2bd77c1c
@@ -36,8 +36,6 @@ However, eBPF tracing program types like kprobes, fprobes, and tracepoints are o
 
 But their overlapping functionality can make choosing the right one confusing.
 
-In this tutorial, we’ll implement several different eBPF tracing programs where all capture `execve` syscall events and compare their strengths and trade-offs.
-
 ::image-box
 ---
 :src: __static__/tracing.png
@@ -45,6 +43,15 @@ In this tutorial, we’ll implement several different eBPF tracing programs wher
 :max-width: 600px
 ---
 ::
+
+In this tutorial, we’ll look at a few different eBPF tracing program types that all capture `execve` syscall events, and then compare their strengths and trade-offs. The code lives for this lab is in the `ebpf-labs-advanced/lab1` directory.
+
+I’ll walk you through the details step by step—but you can also try things out anytime by building and running the program yourself:
+```bash
+go generate
+go build
+sudo ./lab1
+```
 
 ## eBPF Tracepoint
 
@@ -159,7 +166,7 @@ But there are two downsides to this:
 
 Raw tracepoints may look similar to regular tracepoints, since both correspond to events you can view under `/sys/kernel/debug/tracing/available_events`. The difference lies in how the kernel passes arguments to them.
 
-For regular tracepoints, the kernel pre-processes the arguments and builds a context struct. In contrast, eBPF raw tracepoints receive their arguments in a raw format via `struct bpf_raw_tracepoint_args`, and the program must interpret them manually.
+For regular tracepoints, the kernel pre-processes the arguments and builds a context struct. In contrast, eBPF raw tracepoints receive their arguments in a raw format via `struct bpf_raw_tracepoint_args` (defined in `vmlinux.h`), and the program must interpret them manually.
 
 Because no extra work is done to package fields, raw tracepoints typically [run faster with less overhead than regular tracepoints](https://lwn.net/Articles/750569/).
 
@@ -212,7 +219,7 @@ kind: info
 💡 `SEC("raw_tp/xx")` and `SEC("raw_tracepoint/xx")` are equivalent, and you can use either one according to personal preference.
 ::
 
-Notice also that we are reading the arguments of the syscall from the CPU registers. The [System V ABI](https://gitlab.com/x86-psABIs/x86-64-ABI/-/jobs/artifacts/master/raw/x86-64-ABI/abi.pdf?job=build) specifies which arguments should be present in which CPU registers.
+Notice also that we are reading the syscall arguments from CPU registers. On x86-64, the [System V ABI](https://gitlab.com/x86-psABIs/x86-64-ABI/-/jobs/artifacts/master/raw/x86-64-ABI/abi.pdf?job=build) defines the first argument in `%rdi` (`regs->di`), the second in `%rsi`, and so on.
 
 ```c [trace.c]
 ...
@@ -220,7 +227,7 @@ Notice also that we are reading the arguments of the syscall from the CPU regist
 ...
 ```
 
-Since we rely on CPU registers, we need to target our binary for specific system architectures. One way to achieve this is to provide a `—-target` flag.
+Since we rely on CPU registers, we need to target our binary for specific system architectures. One way to achieve this is to set a `--target` flag to the `bpf2go` command (actually `clang` internally).
 
 ```go [main.go]{3}
 package main                                                                
@@ -233,7 +240,7 @@ import (
 
 ## eBPF Kernel Probes (kprobes)
 
-Regular and raw eBPF tracepoints might in fact be sufficient for your use case, but their main limitation is that they are limited to a set of predefined hook points (and perf events) in the kernel, disallowing you to trace arbitrary kernel events.
+Regular and raw eBPF tracepoints might in fact be sufficient for your use case, but their main limitation is that they are limited to a set of predefined hook points in the kernel, disallowing you to trace arbitrary kernel events.
 
 Kprobes alleviate this by allowing dynamic hooks into any kernel function, including within function body, not just at the start or return.
 
@@ -242,7 +249,7 @@ Kprobes alleviate this by allowing dynamic hooks into any kernel function, inclu
 kind: info
 ---
 
-💡 Some functions marked with the `notrace` keyword are exceptions, and kprobes cannot hook onto them.
+💡 Functions marked with the `notrace` keyword are exceptions, and kprobes cannot hook them.
 ::
 
 Conveniently, you can list all kernel symbols in `/proc/kallsyms`:
@@ -294,7 +301,7 @@ int kprobe_execve_non_core(struct pt_regs *ctx) {
 
 But the issue with kprobes is that you **depend on whatever code happens to be in the kernel your system runs and are not assured to be stable across different kernel versions**. Functions might exist in certain kernel versions, while not in others, structs can change, rename, or remove a field you are using.
 
-In the upcoming tutorial, we’ll look at how to avoid these kinds of “non-portable” scenarios.
+In the upcoming tutorial, we’ll look at how to avoid these kinds of non-portable scenarios. But in general, think of them as a last resort in case none other eBPF program type supports what you are looking for.
 
 ::remark-box
 ---
@@ -310,18 +317,31 @@ And while this mechanism works well, it has a downside.
 
 Each probe hit generates an exception, causing context switches and exception handling. That overhead may be negligible for infrequent probes, but if many probes are attached to “hot” kernel functions, performance can degrade significantly.
 
-Is there some alternative to allow triggering eBPF programs with less overhead? Yes, of course — read along.
+Is there some alternative to allow triggering eBPF programs with less overhead? Yes, of course.
 
-## Fprobes (fentry/fexit)
+## Fprobes
 
 As mentioned above, kprobes work by patching an instruction to trigger a debug exception, which adds context-switch and exception-handling overhead.  
 
-Fprobes in contrast build on the ftrace mechanism. The compiler inserts a NOP at each function entry, which can be patched at runtime into an [eBPF trampoline](https://lwn.net/Articles/804937/). This trampoline calls the eBPF program directly, avoiding exceptions and making attach and detach operations faster with much lower overhead.  
+Fprobes in contrast build on the [ftrace mechanism](https://www.kernel.org/doc/html/v6.9/trace/ftrace.html). 
 
-The trade-off is that fprobes can only attach to function entry points (fentry) and exits (fexit). However, they can also attach to BPF programs such as XDP, TC, or cGroup hooks.
+In other words, at each function entry, the compiler emits a NOP instruction that can later be patched at runtime into a jump to an [eBPF trampoline](https://lwn.net/Articles/804937/). This trampoline calls the eBPF program directly, avoiding exceptions and making attach and detach operations faster with much lower overhead.  
+
+The main (rather small) limitation is that fprobes can only attach at function entry (fentry) and function exit (fexit) points, not at arbitrary instruction offsets like kprobes. However, fentry/fexit probes are flexible in that they can also attach to eBPF programs such as XDP, TC, or cgroup programs.
+
+::details-box
+---
+:summary: Why would one ever attach to an eBPF program onto an eBPF XDP, TC or cgroup program?
+---
+
+It may sound unusual, but using fprobes you can trace eBPF programs just like you would trace kernel functions. 
+
+For example, I once used an fentry program to measure [how frequently different XDP return codes occurred](https://github.com/dorkamotorka/xdpmonitor-ebpf) which was helpful while developing an eBPF-based firewall. 
+
+I applied the same idea to [collect statistics of TC programs return codes](https://github.com/dorkamotorka/tcmonitor-ebpf).
+::
 
 Additionally, fexit probes have access to the function’s input parameters, something kretprobes cannot provide.
-
 
 ```c [trace.c]
 SEC("fentry/__x64_sys_execve")
@@ -344,8 +364,7 @@ They do however require at least kernel version 5.5 which might be an issue if y
 ---
 kind: info
 ---
-💡 For the kprobe example above, I intentionally read the register value using `&regs→di`, but I could also use [`PT_REGS_PARM*`](https://docs.ebpf.io/ebpf-library/libbpf/ebpf/PT_REGS_PARM/) macro which should be preffered.
-
+💡 For the examples above, I intentionally read the register value using `&regs→di`, where I could also use [`PT_REGS_PARM*`](https://docs.ebpf.io/ebpf-library/libbpf/ebpf/PT_REGS_PARM/) macro which should be preffered.
 ::
 
-Before I let you go, note that there are also BTF-enabled tracepoints, which we’ll cover in the upcoming tutorial alongside an introduction to BTF (BPF Type Format).
+Before I let you go, note that there are also BTF-enabled tracepoints, which we’ll briefly cover in the upcoming tutorial alongside an introduction to BTF (BPF Type Format).

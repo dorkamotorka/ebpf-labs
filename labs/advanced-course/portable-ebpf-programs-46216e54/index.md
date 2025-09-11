@@ -4,7 +4,7 @@ kind: tutorial
 title: Why Does My eBPF Program Work on One Kernel but Fail on Another?
 
 description: |
-  TODO
+  In this tutorial, we look at why eBPF programs can fail across kernel versions due to changes in structs, tracepoints, and function layouts. We look at examples of how these differences cause portability issues and how BPF CO-RE, BTF and vmlinux.h address them.
 
 playground:
   name: ebpf-playground-2bd77c1c
