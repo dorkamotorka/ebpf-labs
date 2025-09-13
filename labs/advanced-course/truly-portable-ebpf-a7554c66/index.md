@@ -58,8 +58,8 @@ And ideally this would happen automatically during build-time of your applicatio
 
 Let's see how.
 
-Sections:
-- Generate an eBPF skeleton for my example program
-- Automatically downloads and embeds BTF data from btfhub-archive for all kernel/OS versions
-- Minimizes the BTF data to include only the types actually used by the example eBPF program
-- Produces a single binary that can run across a wide range of kernels—without requiring BTF support on the target system
+## Generating eBPF Skeleton
+
+## Installing the BTF Information from btfhub-archive Repository
+
+## Embedding BTF Information to eBPF Application Binary

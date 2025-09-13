@@ -280,6 +280,7 @@ go generate
 go build
 sudo ./lab2
 ```
+
 And then dump the recorded BTF information for the `handle_execve_tp` tracepoint program using:
 
 ```bash
@@ -312,6 +313,18 @@ sudo bpftool btf dump id <prog-btf-id>
         'ctx' type_id=13
 ```
 
+::remark-box
+---
+kind: info
+---
+💡 To embed BTF information into the eBPF application binary, `clang` must be invoked with the `-g` flag. You don’t see it explicitly because `go generate` runs `bpf2go`, which internally invokes `clang` with [the -g flag enabled by default](https://github.com/cilium/ebpf/blob/5ba3156ee1314afa3c3166e59d7775d674f57760/cmd/bpf2go/gen/compile.go#L92).  
+
+Without `-g`, compiling eBPF programs that use `BPF_CORE*` helpers fails with:
+```
+error: using builtin_preserve_access_index() without -g
+```
+::
+
 ::details-box
 ---
 :summary: Detailed explanation of the BTF output
@@ -333,26 +346,6 @@ For example:
 Well, this is quite a lot to take it, but what it really shows is the BTF (BPF Type Format) description of kernel structures/types your program is working with.
 
 And for your eBPF program to work across kernel versions—where struct layouts may differ—the target kernel must also be compiled with BTF support. Without it, the program won’t be able to resolve the correct fields offsets at runtime.
-
-::details-box
----
-:summary: How to check if your kernel is compiled with BTF support?
----
-
-You can verify this using:
-
-```bash
-grep CONFIG_DEBUG_INFO_BTF /boot/config-$(uname -r)
-```
-```
-CONFIG_DEBUG_INFO_BTF=y
-```
-
-In case it doesn’t, then you have two options:
-
-- Re-compile the kernel with the `CONFIG_DEBUG_INFO_BTF=y` option or upgrade the kernel, which is time-consuming, inconvenient — especially if the machine is in production.
-- Or better, provide the BTF information of that specific kernel alongside your program. We'll talk about this in the next tutorial
-::
 
 ::remark-box
 ---
@@ -389,6 +382,26 @@ This process is known as <i>field offset relocation</i>.
 Although most eBPF kernels nowadays support BTF, it's not really something we can rely on when we want to design truly portable eBPF programs.
 
 Without BTF support in the target kernel, the loader can't perform field offset relocation, and the program may fail to load or behave incorrectly.
+
+::details-box
+---
+:summary: How to check if your kernel is compiled with BTF support?
+---
+
+You can verify this using:
+
+```bash
+grep CONFIG_DEBUG_INFO_BTF /boot/config-$(uname -r)
+```
+```
+CONFIG_DEBUG_INFO_BTF=y
+```
+
+In case it doesn’t, then you have two options:
+
+- Re-compile the kernel with the `CONFIG_DEBUG_INFO_BTF=y` option or upgrade the kernel, which is time-consuming, inconvenient — especially if the machine is in production.
+- Or better, provide the BTF information of that specific kernel alongside your program. We'll talk about this in the next tutorial
+::
 
 **But can we do something to avoid this dependency?**
 
