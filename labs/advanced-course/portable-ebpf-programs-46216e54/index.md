@@ -34,7 +34,7 @@ In a perfect world, everyone’s systems would be fully updated, patched regular
 
 But let’s be real—that’s rarely the case.
 
-Some environments still rely on legacy versions of Ubuntu or Fedora, while others don't have their kernels compiled with BTF (BPF Type Format) support.
+Some environments still rely on legacy versions of Ubuntu or Fedora, while others don't have their kernels compiled with BTF (BPF Type Format).
 
 And if you’re maintaining any open-source tools, things get even messier. You have zero control over what kind of system your users will run your program on.
 
@@ -72,7 +72,7 @@ struct tcphdr {       /* Offset Size */
 };
 ```
 
-In the next kernel release, 5.4, kernel developers might decide to place these fields into a new struct or rename the seq field to seque or perhaps move these fields up or down (changing their offset):
+In the next kernel release, 5.4, kernel developers might decide to place these fields into a new struct or rename the `seq` field to `seque` or perhaps move these fields up or down (changing their offset):
 
 ```c
 struct tcphdr {       /* Offset Size */
@@ -166,21 +166,23 @@ Why is that? Read along.
 
 In short, the `BPF_CORE_*` family of helpers enables relocatable reads of kernel structs.
 
-So if a certain struct field (like filename in the example) sits at a different offset in another OS or kernel version, these helpers can still locate and read it correctly.
+So if a certain struct field (like `filename` in the example) sits at a different offset in another kernel version, these helpers can still locate and read it correctly.
 
 ::details-box
 ---
 :summary: More information about the `BPF_CORE_*` family of helpers
 ---
 
-All `BPF_CORE_*` helpers let your eBPF program read fields from kernel (or user) structs in a way that survives kernel changes (renames, field reordering, different offsets) using BTF-based CO-RE relocations:
+All `BPF_CORE_*` helpers let your eBPF program read fields from kernel structs in a way that survives kernel changes (renames, field reordering, different offsets) using BTF-based CO-RE relocations:
 
-- `BPF_CORE_READ(src, field, [nested_field, ...])` - Reads the value of a (possibly nested) field from a kernel struct and on failure returns a zero value, which is not that ideal, since you can’t distinguish “real zero read” from “failed read”.
-- `BPF_CORE_READ_INTO(&dst, src, field, [nested_field, ...])` - Reads into `dst` and returns a zero value on success and a negative value on error.
-- `BPF_CORE_READ_USER` / `BPF_CORE_READ_USER_INTO` - Same as above, but for user-memory pointers.
+- `BPF_CORE_READ(src, field, [nested_field, ...])` &rarr; Reads the value of a (possibly nested) field from a kernel struct and on failure returns a zero value, which is not that ideal, since you can’t distinguish “real zero read” from “failed read”.
+- `BPF_CORE_READ_INTO(&dst, src, field, [nested_field, ...])` &rarr; Reads into `dst` and returns a zero value on success and a negative value on error.
+- `BPF_CORE_READ_USER` / `BPF_CORE_READ_USER_INTO` &rarr; Same as above, but for user-memory pointers.
 - and others..
 
-You'll also see developers using `bpf_core_read()` or similar lower-case helpers — these are low-level functions that copy bytes from a relocatable address into a buffer and return an error code. In contrast, `BPF_CORE_READ()` is a macro built on top that automatically follows pointer chains and applies CO-RE relocations, making it especially convenient for accessing nested kernel structs.
+You'll also see developers using `bpf_core_read()` or similar lower-case helpers.
+
+These are low-level functions that copy bytes from a relocatable address into a buffer and return an error code. In contrast, `BPF_CORE_READ()` is a macro built on top that automatically follows pointer chains and applies CO-RE relocations, making it especially convenient for accessing nested kernel structs.
 ```c
 struct task_struct *task = bpf_get_current_task();
 
@@ -193,7 +195,7 @@ bpf_core_read(&pid2, sizeof(pid2), &task->real_parent->pid);
 ```
 ::
 
-Under the hood, this is made possible by BPF CO-RE relocation information and [BTF (BPF Type Format)](https://docs.ebpf.io/concepts/btf/).
+Under the hood, this is made possible by BPF CO-RE relocation information and BPF Type Format.
 
 **Wait, what? CO-RE relocation information? BTF?** Read along.
 
@@ -201,9 +203,9 @@ Under the hood, this is made possible by BPF CO-RE relocation information and [B
 
 If you peek into almost any production eBPF codebase, you’ll notice all of them include (or generate during the build-time) the `vmlinux.h` header. 
 
-There's one also in our `ebpf-labs-advances/lab2` directory for this lab - open it.
+There's one also in our `ebpf-labs-advanced/lab2` directory for this lab - open it.
 
-This file contains definitions for all kernel structs like `trace_event_raw_sys_enter` in the example above, generated based on the currently running kernel.
+This file contains definitions for all kernel structs (like `trace_event_raw_sys_enter` in the example above), generated based on the currently running kernel.
 
 ::details-box
 ---
@@ -231,11 +233,11 @@ Here’s where it gets interesting — this header includes a few special lines 
 #endif
 ```
 
-The line `__attribute__((preserve_access_index))` at the top of `vmlinux.h`, tells the compiler to emit BPF CO-RE (Compile Once – Run Everywhere) relocation information for every struct field your eBPF program accesses into your eBPF object file.
+The line `__attribute__((preserve_access_index))` at the top of `vmlinux.h`, tells the compiler to emit BPF CO-RE (Compile Once – Run Everywhere) relocation information (into the output binary) for every struct field your eBPF program accesses into your eBPF object file.
 
 And the `clang attribute push` ensures this applies to all struct definitions until the matching `clang attribute pop` at the bottom of the file.
 
-In other words, when you reference a field (like `filename` in the examples in `ebpf-labs-advances/lab2/trace.c` file) from a kernel struct, the compiler doesn’t just hardcode its offset. Instead, it records metadata—like the field’s name, type, offset, and parent struct.
+In other words, when you reference a field (like `filename` in the examples in `ebpf-labs-advanced/lab2/trace.c` file) from a kernel struct, the compiler doesn’t just hardcode its offset. Instead, it records metadata—like the field’s name, type, offset, and parent struct.
 
 ```c [trace.c] {3,6}
 SEC("tracepoint/syscalls/sys_enter_execve")
@@ -266,15 +268,15 @@ struct bpf_core_relo {
 ```
 where the arguments are:
 - `insn_off`: Identifies the instruction being relocated, such as one that sets a register to a specific value.
-- `type_id`: References BTF (BPF Type Format) metadata, which describes the layout of the target kernel structure.
+- `type_id`: References BTF (BPF Type Format) metadata, which describes the layout of the kernel structure.
 - `access_str_off`: Specifies how a particular field is accessed relative to the structure.
 ::
 
-This metadata is recorded in BPF Type Format (BTF).
+This metadata is recorded in [BPF Type Format (BTF)](https://docs.ebpf.io/concepts/btf/).
 
 ## BPF Type Format (BTF)
 
-To understand how this metadata looks like, let's build and run the program from `ebpf-labs-advanced` directory, using:
+To understand how this metadata looks like, let's build and run the program from `ebpf-labs-advanced/lab2` directory, using:
 ```bash
 go generate
 go build
@@ -347,11 +349,11 @@ Well, this is quite a lot to take it, but what it really shows is the BTF (BPF T
 
 And for your eBPF program to work across kernel versions—where struct layouts may differ—the target kernel must also be compiled with BTF support. Without it, the program won’t be able to resolve the correct fields offsets at runtime.
 
-::remark-box
+::details-box
 ---
-kind: info
+:summary: Still confused?
 ---
-💡 To avoid confusion, the BTF data shown above is only a metadata record of kernel structs and their layout that our eBPF program uses. While the BTF information from the target kernel is different and can be inspected (on the target kernel) with:
+💡 The BTF data shown above is only a metadata record of kernel structs and their layout that our eBPF program uses. While the BTF information from the target kernel is different and can be inspected (on the target kernel) with:
 ```bash
 sudo bpftool btf dump file /sys/kernel/btf/vmlinux
 ```
@@ -375,13 +377,13 @@ sudo bpftool btf dump file /sys/kernel/btf/vmlinux
 
 **Why is this necessary?**
 
-When your eBPF program is loaded by a BPF loader like [libbpf](https://github.com/libbpf/libbpf), the loader compares the program’s BTF data with the target kernel’s BTF. Since it's quite likely your program won't only run on the kernel it was compiled on, the loader needs to resolve types, updates offsets, and adjusts field accesses to ensure the program reads kernel structures correctly.
+When your eBPF program is loaded by a BPF loader like [libbpf](https://github.com/libbpf/libbpf), the loader compares the program’s BTF data with the target kernel’s BTF. 
 
-This process is known as <i>field offset relocation</i>.
+And since it's quite likely your program won't only run on the kernel it was compiled on, the loader needs to resolve types, updates offsets, and adjusts field accesses to ensure the program reads kernel structures correctly.
+
+This process is known as **field offset relocation**.
 
 Although most eBPF kernels nowadays support BTF, it's not really something we can rely on when we want to design truly portable eBPF programs.
-
-Without BTF support in the target kernel, the loader can't perform field offset relocation, and the program may fail to load or behave incorrectly.
 
 ::details-box
 ---
