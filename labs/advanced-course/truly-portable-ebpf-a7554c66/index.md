@@ -4,7 +4,7 @@ kind: tutorial
 title: Building Truly Portable eBPF Programs and BTFHub
 
 description: |
-  TODO
+  In this tutorial, you’ll learn how to make your eBPF programs portable across kernels that lack built-in BTF support.
 
 playground:
   name: ebpf-playground-2bd77c1c
