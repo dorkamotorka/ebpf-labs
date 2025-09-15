@@ -44,15 +44,15 @@ In this tutorial, you’ll learn how to overcome this limitation by embedding BT
 ---
 ::
 
-In the previous tutorial, [Why Does My eBPF Program Work on One Kernel but Fail on Another?](https://labs.iximiuz.com/tutorials/portable-ebpf-programs-46216e54), we covered [BPF CO-RE](https://docs.ebpf.io/concepts/core/), `vmlinux.h`, and BTF concepts. The takeaway was that  if you want your eBPF program to run across different kernels—where struct layouts likely to differ—you need two things:
-- Your program binary packed with embedded BTF info.
+In the previous tutorial, [Why Does My eBPF Program Work on One Kernel but Fail on Another?](https://labs.iximiuz.com/tutorials/portable-ebpf-programs-46216e54), we covered [BPF CO-RE](https://docs.ebpf.io/concepts/core/), `vmlinux.h`, and [BTF](https://docs.ebpf.io/concepts/btf/) concepts. The takeaway was that  if you want your eBPF program to run across different kernels (where struct layouts likely to differ) you need two things:
+- Your program binary packed with embedded BTF inforomation for kernel structs it interacts with.
 - The target kernel itself built with BTF support.
 
 Sounds simple enough, but for most eBPF projects you can’t really predict in advance what environments your program will run in.  
 
 Sure, you could document that a kernel with BTF support is required, but enabling BTF not only requires rebuilding and rebooting the kernel, but is also not practical at scale and is rarely acceptable in environments where downtime is not an option.
 
-To solve this, Aqua Security maintains [btfhub-archive](https://github.com/aquasecurity/btfhub-archive), a repository of prebuilt BTF files for almost all kernels that lack embedded BTF.
+To address this, Aqua Security maintains [btfhub-archive](https://github.com/aquasecurity/btfhub-archive), a repository of prebuilt BTF files for almost all kernels that lack embedded BTF.
 
 By downloading the appropriate BTF files for the kernels you want to support and embedding them directly into your eBPF program, you can eliminate the need for BTF support on the target system.
 
@@ -100,7 +100,9 @@ defer objs.Close()
 ...
 ```
 
-But as you can imagine, installing and generating minimal BTF files by hand would be pretty tedious. To make things easier, we’ve put together a `Makefile` and `Makefile.btfgen` that handle it all with a simple `make` command. Go ahead and give it a try — and maybe grab a coffee while you’re at it.
+But as you can imagine, installing and generating minimal BTF files by hand would be pretty tedious. 
+
+To make things easier, we’ve put together a `Makefile` and `Makefile.btfgen` that handle it all with a simple `make` command. Go ahead and give it a try — and maybe grab a coffee while you’re at it.
 
 
 Both files (in the `ebpf-labs-advanced/lab3`) include detailed comments to make it easier for you to follow along and understand each step. 
@@ -112,5 +114,3 @@ kind: info
 
 Our Makefiles only install BTF files for the x86 architecture—otherwise the `make` process would take too long for this demo. But extending it is straightforward if you need others.
 ::
-
-And honestly, it doesn’t get much harder than this.
