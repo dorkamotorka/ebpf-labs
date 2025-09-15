@@ -102,11 +102,11 @@ defer objs.Close()
 
 But as you can imagine, installing and generating minimal BTF files by hand would be pretty tedious. 
 
-To make things easier, we’ve put together a `Makefile` and `Makefile.btfgen` that handle it all with a simple `make` command which:
-- Compiles the eBPF kernel program and generate a Go source file to interact with it
-- Automatically downloads and embeds BTF data from btfhub-archive for different kernel/OS versions
-- Minimizes the BTF data to include only the types actually used by our eBPF program
-- Produces a single binary that can run across a wide range of kernels—without requiring BTF support on the target system
+To simplify the process, we’ve implemented a `Makefile` and `Makefile.btfgen` that automate everything behind a single `make` command. This workflow:  
+- **Compiles the eBPF program** and generates the Go bindings to interact with it  
+- **Fetches and embeds BTF data** from btfhub-archive repository for different kernel and OS versions  
+- **Strips the BTF data down** to only the types your eBPF program actually uses
+- **Builds a single portable binary** that can run across a wide range of kernels—even on systems without BTF support  
 
 Go ahead and give it a try — and maybe grab a coffee while you’re at it.
 
