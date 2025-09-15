@@ -1,7 +1,7 @@
 ---
 kind: tutorial
 
-title: BTFHub and Building Truly Portable eBPF Programs
+title: Building Truly Portable eBPF Programs and BTFHub
 
 description: |
   TODO
@@ -30,9 +30,9 @@ cover: __static__/tracing2.png
 
 ---
 
-Although most modern kernels ship with BTF enabled, you can’t really rely on this when building portable eBPF programs.
+Although most modern kernels ship with [BTF](https://docs.ebpf.io/concepts/btf/) enabled, you can’t really rely on this when building portable eBPF programs.
 
-Without BTF in the target kernel, the eBPF loader cannot resolve types, fix offsets, or adjust field accesses to ensure the eBPF program reads kernel structures correctly.
+Without BTF in the (target) kernel, the eBPF loader cannot resolve types, fix offsets, or adjust field accesses to ensure the eBPF program reads kernel structures correctly.
 
 In this tutorial, you’ll learn how to overcome this limitation by embedding BTF data for a wide range of kernels directly into your eBPF application binary. With this approach, your program will run reliably even on systems that lack BTF support.
 
@@ -44,7 +44,7 @@ In this tutorial, you’ll learn how to overcome this limitation by embedding BT
 ---
 ::
 
-In the previous tutorial, [Why Does My eBPF Program Work on One Kernel but Fail on Another?](https://labs.iximiuz.com/tutorials/portable-ebpf-programs-46216e54), we covered [BPF CO-RE](https://docs.ebpf.io/concepts/core/), `vmlinux.h`, and [BTF](https://docs.ebpf.io/concepts/btf/) concepts. The takeaway was that  if you want your eBPF program to run across different kernels (where struct layouts likely to differ) you need two things:
+In the previous tutorial, [Why Does My eBPF Program Work on One Kernel but Fail on Another?](https://labs.iximiuz.com/tutorials/portable-ebpf-programs-46216e54), we covered [BPF CO-RE](https://docs.ebpf.io/concepts/core/), `vmlinux.h`, and BTF concepts. The takeaway was that  if you want your eBPF program to run across different kernels (where struct layouts likely to differ) you need two things:
 - Your program binary packed with embedded BTF inforomation for kernel structs it interacts with.
 - The target kernel itself built with BTF support.
 
@@ -64,7 +64,7 @@ But while it might sound tempting to just install and bundle the **entire** BTFs
 
 Nonetheless, your eBPF program doesn’t need the whole BTF of the target kernel. It only cares about the specific kernel types and structs it actually interacts with.
 
-Doing that manually would be painful—but luckily, `bpftool` can help with that. It can look at your compiled eBPF object (`.o`), figure out exactly which structs and fields you need, and spit out the minimal BTF for you.
+Doing that manually would be painful—but luckily, `bpftool` can help with that. It can look at your compiled eBPF object (`.o`), figure out exactly which structs and fields the program uses, and spit out the minimal BTF for you.
 
 ```bash
 sudo bpftool gen min_core_btf <full.btf> <out.min.btf> <bpf .o file>
@@ -74,13 +74,15 @@ This command trims the full BTF down to just the types required by your program.
 
 But that's only half the solution.
 
-## Embedding BTF Information to eBPF Application Binary
+## Embedding BTF Information into eBPF Application Binary
 
-Before the program loads on the target kernel, we need to detect the OS and kernel version so we know which BTF file to use for that specific environment. And of course, ideally, we wouldn’t need this step at all—the check should only run if BTF information isn’t already available at the target kernel.
+Before the program loads on the target kernel, it needs to detect the OS and kernel version to we know which BTF file to use for that specific environment. And of course, ideally, we wouldn’t need this step at all—the check should only run if BTF information isn’t already available at the target kernel.
 
 For this part, the code is taken from [Inspektor Gadget](https://github.com/inspektor-gadget/inspektor-gadget/tree/main), specifically the `btfgen.go` file (you can find it in `ebpf-labs-advanced/lab3`).
 
-The core piece here is the `GetBTFSpec()` function inside `ebpf-labs-advanced/lab3/btfgen.go`. It fetches the right BTF info and passes it into `ebpf.ProgramOptions`, which is what we set when loading our eBPF program into the kernel.
+The core piece here is the `GetBTFSpec()` function inside `ebpf-labs-advanced/lab3/btfgen.go`. 
+
+It fetches the right BTF info and passes it into `ebpf.ProgramOptions`, which is what we set when loading our eBPF program into the kernel.
 
 ```go [main.go] {2-7,11}
 ...
@@ -108,9 +110,15 @@ To simplify the process, we’ve implemented a `Makefile` and `Makefile.btfgen` 
 - **Strips the BTF data down** to only the types your eBPF program actually uses
 - **Builds a single portable binary** that can run across a wide range of kernels—even on systems without BTF support  
 
+Both files (in the `ebpf-labs-advanced/lab3`) include detailed comments to make it easier for you to follow along and understand each step. 
+
 Go ahead and give it a try — and maybe grab a coffee while you’re at it.
 
-Both files (in the `ebpf-labs-advanced/lab3`) include detailed comments to make it easier for you to follow along and understand each step. 
+```bash
+cd ebpf-labs-advanced/lab3 # Go inside the lab directory if you haven't yet
+git submodule init # Initialize btfhub-archive repository
+make # Run build
+```
 
 ::remark-box
 ---
