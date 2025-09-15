@@ -116,7 +116,7 @@ Go ahead and give it a try — and maybe grab a coffee while you’re at it.
 
 ```bash
 cd ebpf-labs-advanced/lab3 # Go inside the lab directory if you haven't yet
-git submodule init # Initialize btfhub-archive repository
+git submodule update --init --progress # Clone btfhub-archive repository
 make # Run build
 ```
 
@@ -125,5 +125,5 @@ make # Run build
 kind: info
 ---
 
-Our Makefiles only install BTF files for the x86 architecture—otherwise the `make` process would take too long for this demo. But extending it is straightforward if you need others.
+Our Makefiles only install BTF files for the x86 architecture — since the `make` process already takes too long for this tutorial. But extending it is straightforward if you need others.
 ::
