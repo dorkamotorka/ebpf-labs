@@ -105,6 +105,8 @@ In other words, if the reservation succeeds, the data is written directly into t
 
 Not to mention, for nearly all practical use cases, the [Ring Buffer outperforms the Perf Buffer](https://patchwork.ozlabs.org/project/netdev/patch/20200529075424.3139988-5-andriin@fb.com/).
 
+TODO: eBPF perfbuf, theoretically, can support higher throughput of data due to per-CPU buffers, but this becomes relevant only when we are talking about millions of events per second. But that not really a valid reason, since one can also use multiple eBPF Ring buffers.
+
 TODO: What is the diff between commit and discard? The difference between commit and discard is very small. Discard just marks a record as discarded, and such records are supposed to be ignored by consumer code. Discard is useful for some advanced use-cases, such as ensuring all-or-nothing multi-record submission, or emulating temporary malloc()/free() within single BPF program invocation.
 
 TODO: bpf_ringbuf_query() helper allows to query various properties of ring buffer.
