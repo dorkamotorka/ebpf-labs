@@ -34,7 +34,7 @@ For eBPF applications to be useful, kernel events must often be delivered to use
 
 These events may enrich user-space signals for observability, or represent security actions—such as a firewall rule being hit or a binary execution being blocked—that must be logged, processed, and presented in user space.
 
-Regardless of the use case, this transfer relies on a common mechanism, a buffer that moves event data from kernel space to user space.
+Regardless of the use case, this transfer relies on a common mechanism, a buffer that moves event data from kernel space to user space application.
 
 There are two primary mechanisms for this:
 - **Perf buffer** (introduced in v4.3), allows kernel programs to push kernel events into a per-CPU buffer that user space can poll and read.
@@ -59,7 +59,7 @@ TODO: image - working principle (with circular buffers on the image!)
 kind: info
 ---
 
-💡 You can actually create multiple ring buffers, which may be useful for large volumes of events.
+💡 You’re actually not limited to a single ring buffer—multiple buffers can be created, which you’ll sometimes see in projects that handle large event volumes.
 ::
 
 Compared to ring buffer, design of the perf buffer introduces **three major drawbacks** that often unnecessarily complicate real-world applications and hinder it's performance.
@@ -70,7 +70,7 @@ Whenever you want to push a kernel event to a perf buffer you must first prepare
 
 This is all fine, unless the buffer is not full, but if it is, the copy is wasted, and all the processing work was for nothing.
 
-```c [simple-perf-buffer/perf.c] {3,11-12}
+```c [simple-perf-buffer/perf.c] {3,11-13}
 SEC("tracepoint/syscalls/sys_enter_execve")
 int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
     struct event e = {};
@@ -81,7 +81,8 @@ int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
     const char *filename_ptr = (const char *)BPF_CORE_READ(ctx, args[0]);
     bpf_core_read_user_str(e.filename, sizeof(e.filename), filename_ptr);
 
-    // Emit to perf buffer (one record on the current CPU)
+    // Emit to perf buffer (one record on the current CPU) and
+    // hope it doesn't get dropped due to a full buffer
     bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &e, sizeof(e));
     return 0;
 }
@@ -131,7 +132,7 @@ int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
 - **Data pointer** – a pointer returned by `bpf_ringbuf_reserve` that references the reserved space in the ring buffer.  
 - **Flags** – declares how the notification of new data availability should be handled. Will be discussed below.  
 
-Once called, the reserved data is committed to the ring buffer and becomes available to user space.  
+A successful call to `bpf_ringbuf_reserve()` guarantees that the subsequent `bpf_ringbuf_submit()` will not fail.
 ::
 
 ::details-box
@@ -144,28 +145,35 @@ Sometimes your eBPF program reserves space in the ring buffer, but later determi
 ```c {12-17}
 SEC("tracepoint/syscalls/sys_enter_execve")
 int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
-    // Reserve space on the ring buffer
-    struct event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
-    if (!e) {
-        // If the buffer is full, just drop the event
-        return 0;
-    }
+  // Reserve space on the ring buffer
+  struct event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+  if (!e) {
+    // If the buffer is full, just drop the event
+    return 0;
+  }
 
-    u64 pid_tgid = bpf_get_current_pid_tgid();
-    e->pid  = pid_tgid >> 32;
-    // Example condition: only report execve calls from PID 1234
-    if (e->pid != 1234) {
-        // Free reserved space without sending an event
-        bpf_ringbuf_discard(e, 0);
-        return 0;
-    }
-...
+  u64 pid_tgid = bpf_get_current_pid_tgid();
+  e->pid  = pid_tgid >> 32;
+  // Example condition: only report execve calls from PID 1234
+  if (e->pid != 1234) {
+    // Free reserved space without sending an event
+    bpf_ringbuf_discard(e, 0);
+    return 0;
+  }
+
+  const char *filename_ptr = (const char *)BPF_CORE_READ(ctx, args[0]);
+  bpf_core_read_user_str(e->filename, sizeof(e->filename), filename_ptr);
+
+  // Submit to ring buffer
+  bpf_ringbuf_submit(e, 0);
+  return 0;
+}
 ```
 ::
 
 #### Event Ordering
 
-Consider a workload that tracks correlated events, such as process lifecycles (fork → exec → exit) or network connection lifetimes. In such cases, ordering is critical.
+Consider a workload that tracks correlated events, such as process lifecycles (fork → exec → exit) or TCP connection lifetimes (SYN → SYN-ACK → ACK). In such cases, ordering is critical.
 
 With a perf buffer, where each CPU has its own buffer, there’s no guarantee that events will reach user space in the same order they occurred if they happen in rapid succession, since each buffer fills and drains at different rates.
 
@@ -174,7 +182,7 @@ With a perf buffer, where each CPU has its own buffer, there’s no guarantee th
 :summary: How to circumvent this problem?
 ---
 
-In practice, one way to correctly re-order events in the user-space is by adding a timestamp to the kernel event structure send to the user space. Based on this timestamp the events can be ordered in user space.
+A common approach is to include a timestamp in the event structure sent to user space. Events can then be re-ordered in user space based on this timestamp.
 ```c [simple-perf-buffer/perf.c] {8}
 SEC("tracepoint/syscalls/sys_enter_execve")
 int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
@@ -196,16 +204,19 @@ int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
 
 By contrast, with a single global ring buffer shared across all CPUs, all events go into the same FIFO queue and are delivered sequentially to user space, preserving order without extra complexity.
 
-#### Data Availability Signalling
+#### Data Availability Signaling
 
-Often the biggest overhead when forward to kernel events to user space comes from in-kernel signalling of data availability when a sample is submitted to the buffer. This signal then lets kernel’s poll/epoll system know to wake up user-space handlers blocked on waiting for the new data.
+The main overhead in forwarding kernel events to user space actually comes from signaling data availability when a sample is added to the buffer.
 
-And if events come in at a very high rate, this results in lots of wakeups and context switches, which can dominate CPU usage.
+Whenever this happens, by default:
+- The kernel marks the buffer as ready and triggers a wakeup.
+- `epoll` subystem notifies user-space handlers blocked on the buffer (a blocking `*.Read()` call in user-space application).
+- The scheduler performs a context switch to wake the sleeping thread.
+- The user-space handler copies data out of the buffer, processes it, and (usually) goes back to sleep waiting for more events.
 
-This is true for both perfbuf and ringbuf.
+And at high event rates, the resulting wakeups and context switches can dominate CPU usage—affecting the performance of both perfbuf and ringbuf.
 
-Perfbuf handles that with the ability to set up sampled notification, in which case only every Nth sample will send a notification. 
-
+Perf buffer offers an option to reduce this overhead by enabling sampled notifications, where only every N-th sample triggers a notification.
 ```go [advanced-perf-buffer/main.go] {5-8}
 reader, err := perf.NewReaderWithOptions(
   objs.Events, 
@@ -214,6 +225,7 @@ reader, err := perf.NewReaderWithOptions(
     // The number of events required in any per CPU buffer before
     // Read will process data. The default is zero - a.k.a immediate reads.
     WakeupEvents: 3,
+    // Overwritable: true
   }
 )
 ```
@@ -223,17 +235,15 @@ reader, err := perf.NewReaderWithOptions(
 kind: info
 ---
 
-💡 And you need to make sure that it works for you that you won’t see the last N-1 samples, until the Nth sample arrives. This might or might not be a big deal for your particular case.
+💡 Keep in mind you won’t see the last N-1 samples until the Nth arrives, which may or may not matter in your case. 
 
-One other configurable option of perf buffer is also to be able to overwrite old samples, once full instead of dropping them.
+Additionally, perf buffer also lets you overwrite old samples when full, using the `Overwritable` option, instead of dropping them.
 ::
 
-ringbuf went a different route with this. `bpf_ringbuf_output()` and `bpf_ringbuf_submit()` accept an extra flags argument and you can specify either:
+Ringbuf further improves on this concept, where `bpf_ringbuf_submit()` (and `bpf_ringbuf_output()`) accept an extra flags argument as discussed above:
 - `0`: Default value, which performs adaptive notification depending on whether the user-space consumer is lagging behind or not
-- `BPF_RB_NO_WAKEUP`: Don't wake up user space handler and avoid the interrupt
+- `BPF_RB_NO_WAKEUP`: Don't wake up user space handler (and avoid the interrupt)
 - `BPF_RB_FORCE_WAKEUP`: Force sending a wake up notification
-
- which will send notifications only when a configurable amount of data is enqueued in the ring buffer.
 
 In practice, no flag is a good and safe default, but if you need to get an extra performance, manually controlling data notifications depending on your custom criteria (e.g., amount of enqueued data in the buffer) might give you a big boost in performance.
 
@@ -263,21 +273,29 @@ int handle_execve_tp(struct trace_event_raw_sys_enter *ctx) {
 }
 ```
 
-Taking all of this into account, eBPF perf buffer with their per-CPU buffer desing could theoretically support higher throughput in some very specific setups (e.g. well-tuned per-CPU consumers, minimal overhead), but that usually requires a lot of fine-tuning.
+Taking all of this into account, eBPF perf buffer with their per-CPU buffer design could theoretically support higher throughput in some very specific setups (e.g. well-tuned per-CPU consumers, minimal overhead), but that usually requires a lot of work.
 
-But for nearly all practical use cases, the [Ring Buffer outperforms the Perf Buffer](https://patchwork.ozlabs.org/project/netdev/patch/20200529075424.3139988-5-andriin@fb.com/).
+So for nearly all practical use cases, the [Ring Buffer outperforms the Perf Buffer](https://patchwork.ozlabs.org/project/netdev/patch/20200529075424.3139988-5-andriin@fb.com/).
 
-But here's comes a (relatively) tricky question - why do then tools like Tracee and Tetragon use perf-buffer if it's that inefficient and "complex"?
+But here's comes a (relatively) tricky question. 
 
-## Implementations in the Wild
+**Why do then tools like Tracee and Tetragon use perf-buffer if it's that inefficient and "complex"?**
+
+## Tracee and Tetragon Approach
 
 With tools like [Tracee](https://www.aquasec.com/products/tracee/) and [Tetragon](https://tetragon.io/), which are widely adopted across diverse environments, it’s not enough to consider only the technical constraints — kernel version support is just as critical.
 
-For example, kernel 5.8 is still relatively “new” in many production setups. To remain compatible with older kernels, these tools continue to rely on perf buffers. From a client’s perspective, this compatibility is far more valuable than requiring them to upgrade and restart tens of thousands of machines — an operation that could cause significant downtime.
+For example, kernel 5.8 is still a relatively “new” release for many environments. To remain compatible with older kernels, these tools continue to rely on perf buffers. 
+
+From a client’s perspective, this compatibility is far more valuable than requiring them to upgrade and restart tens of thousands of machines — an operation that could cause significant downtime.
 
 Regardless of which buffering mechanism is used, the biggest risk is buffer overflow. This ultimately comes down to how efficiently user space consumption is implemented.
 
-Ideally, events should be consumed from the buffer as frequently as possible for real-time observability, while taking into an account the cost of constant data availability notifications and context switches. The processing of those events can then be offloaded to worker threads or subprocesses, ensuring that consumption itself remains fast and non-blocking.
+We learned before that in an ideal situation, events should be consumed from the buffer as frequently as possible for real-time observability, while taking into an account the cost of constant data availability notifications and context switches. 
+
+But additionally, the processing of those events should be offloaded to worker threads or subprocesses, ensuring that consumption itself remains fast and non-blocking.
+
+With that in mind both Tracee and Tetragon implement the following approach:
 
 ```go [advanced-perf-buffer/main.go] {1-2,10,21,32-47}
 // Instantiate Queue for forwarding messages
@@ -300,6 +318,8 @@ go func() {
     } else {
       if len(rec.RawSample) > 0 {
         select {
+          // Here the processing is offloaded to a goroutine and
+          // the consumption of new samples can continue
           case recordsQueue <- &rec:
           default:
             log.Printf("recordsQueue channel is full, drop the event")
@@ -329,39 +349,28 @@ go func() {
 }()
 ```
 
-While this does significatly improve and configure your application to handle higher volumes of kernel events, it's still quite tricky and quite some testing needs to be performed to tune your application for highly variable workloads (e.g., long idle periods interrupted by sudden floods of events like a DoS attack or burst of API calls). If you allocate:
-- **large buffers** to avoid losing kernel events during spikes, you waste memory during idle times.
-- **small buffers** to stay memory-efficient in steady state, you risk frequent data drops during bursts.
+While this does significantly improve your application’s ability to handle higher volumes of kernel events, it’s still tricky to tune for highly variable workloads (e.g., long idle periods interrupted by sudden floods of events like a DoS attack or burst of API calls).
 
+If you allocate large buffers and you waste memory during idle times; or allocate small ones and you risk frequent drops during bursts.
 
-::remark-box
----
-kind: warning
----
-**⭐️ Extra Insight ⭐️**
+## Jibril's Approach
 
-What if I told you neither ring buffer, nor perf buffer is they right way to go for a really high volumes of kernel events?
+But what if I told you neither ringbuf nor perfbuf is the right choice for very high event rates (e.g., 600k+ per second)?
 
-Taking inspirations from the creations of the [Jibril (runtime monitoring and threat detection engine based on eBPF)](https://jibril.garnet.ai/), they approach the problem of high volume data and real-time threat detection a bit differently.
+Taking inspirations from the creators of the [Jibril (runtime monitoring and threat detection engine based on eBPF)](https://jibril.garnet.ai/), they approach the problem of high volume data and real-time threat detection a bit differently.
 
 While it's hard to go into the details, as their code is not open-source, but from the discussions that we had - the problem with both perf buffer and ring buffer that prevents modern tools to perform real-time detection is the limitation of the FIFO queue concept that both utilize.
 
-In environments generating hundreds of thousands of events per second (e.g. 600k+), both perf buffers and ring buffers can hit their capacity limits. Every event still needs to pass through a FIFO queue and be processed in user space, which inevitably adds latency and makes true real-time detections harder.
+In environments generating hundreds of thousands of events per second (e.g. 600k+), both perf buffers and ring buffers can hit their capacity limits as well as every event still needs to pass through a FIFO queue and be processed in user space, which inevitably adds latency and makes true real-time detections harder.
 
 Jibril takes a different approach. 
 
 Instead of streaming all kernel events into user space, it caches event data directly in eBPF maps inside the kernel. User space then queries this cached state on demand. 
 
+TODO: working principle image
+
 This design alleviates pressure on buffers, avoids constant data copying, and enables detections closer to real time — since checks can be done against kernel-resident state rather than waiting for events to flow through a queue.
 
-They've nicely documented this approach [here](https://jibril.garnet.ai/information/theory-behind/new-era).
-::
+There is some more information about this approach [here](https://jibril.garnet.ai/information/theory-behind/new-era).
 
-
-TODO: as a side note mention that max_entries is used to specify the size of ring buffer and has to be a power of 2 value. Why?!
-
-TODO: perf buffer vs Perf Buffer (capital letters)
-
-TODO: add content from the book
-
-TODO: https://www.deep-kondah.com/deep-dive-into-ebpf-ring-buffers/
+TODO: connect better to the example code
