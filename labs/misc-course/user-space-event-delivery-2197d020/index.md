@@ -4,7 +4,7 @@ kind: tutorial
 title: All The Ways To Receive Kernel Events in User Space
 
 description: |
-  TODO
+  In this tutorial, you’ll learn how eBPF applications send kernel events into user space using perf buffer and ring buffer, exploring their design, trade-offs, and performance implications. You’ll also learn how real-world tools like Tracee, Tetragon, and Jibril handle high-throughput event delivery while balancing kernel compatibility and real-time detection needs.
 
 playground:
   name: ebpf-playground-2bd77c1c
@@ -14,7 +14,7 @@ tasks:
     init: true
     user: laborant
     run: |
-      git clone https://github.com/dorkamotorka/ebpf-labs-misc.git /home/laborant/ebpf-labs-misc
+      git clone https://github.com/dorkamotorka/ebpf-labs-advanced.git /home/laborant/ebpf-labs-advanced
 
 categories:
 - linux
@@ -47,6 +47,8 @@ Yet many large projects—such as Tetragon and Tracee—still rely on perf buffe
 **Why is that the case?**
 
 In this tutorial, you'll learn about these data-exchange mechanisms, explore their trade-offs, and how real-world eBPF projects handle high-throughput event delivery without losing critical kernel data.
+
+The accompanying code examples can be found in `ebpf-labs-advanced/lab4`.
 
 ## eBPF Perf Buffer vs Ring Buffer
 
@@ -230,6 +232,8 @@ reader, err := perf.NewReaderWithOptions(
 )
 ```
 
+Navigate to `ebpf-labs-advanced/lab4/advanced-perf-buffer` and experiment with this value.
+
 ::remark-box
 ---
 kind: info
@@ -245,7 +249,7 @@ Ringbuf further improves on this concept, where `bpf_ringbuf_submit()` (and `bpf
 - `BPF_RB_NO_WAKEUP`: Don't wake up user space handler (and avoid the interrupt)
 - `BPF_RB_FORCE_WAKEUP`: Force sending a wake up notification
 
-In practice, no flag is a good and safe default, but if you need to get an extra performance, manually controlling data notifications depending on your custom criteria (e.g., amount of enqueued data in the buffer) might give you a big boost in performance.
+In practice, no flag is a good and safe default, and if you need to get an extra performance, manually controlling data notifications depending on your custom criteria (e.g., amount of enqueued data in the buffer) might give you a big boost in performance.
 
 ```c [simple-ring-buffer/ring.c] {2-13,19-21}
 // Hardcoded, but could also be adjustable from user space
@@ -343,7 +347,7 @@ go func() {
         continue
       }
 
-      fmt.Printf("execve pid=%d tgid=%d file=%q\n", ev.PID, ev.TGID, cString(ev.Filename[:]))
+      fmt.Printf("execve pid=%d tgid=%d file=%q ts=%d\n", ev.PID, ev.TGID, cString(ev.Filename[:]), ev.Timestamp)
       // ...
   }
 }()
@@ -351,7 +355,7 @@ go func() {
 
 While this does significantly improve your application’s ability to handle higher volumes of kernel events, it’s still tricky to tune for highly variable workloads (e.g., long idle periods interrupted by sudden floods of events like a DoS attack or burst of API calls).
 
-If you allocate large buffers and you waste memory during idle times; or allocate small ones and you risk frequent drops during bursts.
+If you allocate large buffers you waste memory during idle times; or allocate small ones and you risk frequent drops during bursts.
 
 ## Jibril's Approach
 
@@ -363,14 +367,10 @@ While it's hard to go into the details, as their code is not open-source, but fr
 
 In environments generating hundreds of thousands of events per second (e.g. 600k+), both perf buffers and ring buffers can hit their capacity limits as well as every event still needs to pass through a FIFO queue and be processed in user space, which inevitably adds latency and makes true real-time detections harder.
 
-Jibril takes a different approach. 
-
-Instead of streaming all kernel events into user space, it caches event data directly in eBPF maps inside the kernel. User space then queries this cached state on demand. 
+Instead of streaming all kernel events into user space, Jibril caches event data directly in eBPF maps inside the kernel, which user space can then query on demand.
 
 TODO: working principle image
 
 This design alleviates pressure on buffers, avoids constant data copying, and enables detections closer to real time — since checks can be done against kernel-resident state rather than waiting for events to flow through a queue.
 
 There is some more information about this approach [here](https://jibril.garnet.ai/information/theory-behind/new-era).
-
-TODO: connect better to the example code
