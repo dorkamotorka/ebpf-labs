@@ -26,7 +26,7 @@ tagz:
 createdAt: 2025-09-16
 updatedAt: 2025-09-16
 
-cover: __static__/cover.png
+cover: __static__/userspace.png
 
 ---
 
@@ -50,11 +50,17 @@ In this tutorial, you'll learn about these data-exchange mechanisms, explore the
 
 The accompanying code examples can be found in `ebpf-labs-advanced/lab4`.
 
-## eBPF Perf Buffer vs Ring Buffer
+## eBPF Ring Buffer vs Perf Buffer
 
 The perf buffer is a mechanism in eBPF that consists of per-CPU circular buffers, whereas the ring buffer is a circular buffer shared among all the CPUs. 
 
-TODO: image - working principle (with circular buffers on the image!)
+::image-box
+---
+:src: __static__/userspace.png
+:alt: Ring vs Perf Buffer
+:max-width: 600px
+---
+::
 
 ::remark-box
 ---
@@ -369,7 +375,13 @@ In environments generating hundreds of thousands of events per second (e.g. 600k
 
 Instead of streaming all kernel events into user space, Jibril caches event data directly in eBPF maps inside the kernel, which user space can then query on demand.
 
-TODO: working principle image
+::image-box
+---
+:src: __static__/jibril-arch.png
+:alt: Jibril Approach
+:max-width: 600px
+---
+::
 
 This design alleviates pressure on buffers, avoids constant data copying, and enables detections closer to real time — since checks can be done against kernel-resident state rather than waiting for events to flow through a queue.
 
